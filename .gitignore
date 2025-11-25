@@ -1,0 +1,13 @@
+.task
+bin
+frontend/dist
+frontend/node_modules
+build/linux/appimage/build
+build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+config.yaml
+resources
+build/*
+.data
+.cache
+.idea
+frontend/bindings/*
