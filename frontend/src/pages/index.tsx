@@ -10,6 +10,10 @@ import {
   StartRecording,
   StopRecording,
 } from "@wailsbindings/services/recorderservice";
+import {
+PlayAudioData,
+} from "@wailsbindings/services";
+import { InvokeWithAudio } from "@wailsbindings/services/appservice";
 import PQueue from "p-queue";
 import { Mic, Settings } from "lucide-react";
 import { useLocation } from "wouter";
@@ -130,11 +134,11 @@ export default function HomePage() {
     Events.On("live2d:play-audio", ({ data }) => {
       playMotion(data.group, data.index);
     });
-    Events.On("play-audio", ({ data }: { data: SpeakData }) => {
+    Events.On("live2d:play-audio", ({ data }: { data: PlayAudioData }) => {
       speakQueue.add(async () => {
-        console.log("play-audio", data.text);
-        const url = base64ToBlobUrl(data.base64);
-        setSpeakingText(data.text);
+        console.log("play-audio", data.Text);
+        const url = base64ToBlobUrl(data.Base64);
+        setSpeakingText(data.Text);
 
         await new Promise((resolve) => {
           modelRef.current?.speak(url, {
@@ -163,10 +167,11 @@ export default function HomePage() {
     StartRecording();
     setIsRecording(true);
   }
-  function stopRecording() {
-    StopRecording();
-    // InvokeLatestAudio(conversationID);
+  async function stopRecording() {
+    const audioPath = await StopRecording();
     setIsRecording(false);
+    await InvokeWithAudio(conversationID, audioPath);
+  
   }
   const [, navigate] = useLocation();
 

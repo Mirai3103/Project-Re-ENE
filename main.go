@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	_ "embed"
 	"log"
@@ -8,9 +9,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/Mirai3103/Project-Re-ENE/agent"
+	"github.com/Mirai3103/Project-Re-ENE/asr"
 	"github.com/Mirai3103/Project-Re-ENE/config"
+	"github.com/Mirai3103/Project-Re-ENE/llm"
 	"github.com/Mirai3103/Project-Re-ENE/package/audio"
 	"github.com/Mirai3103/Project-Re-ENE/services"
+	"github.com/Mirai3103/Project-Re-ENE/tts"
 	"github.com/lmittmann/tint"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -30,7 +35,7 @@ func init() {
 	application.RegisterEvent[string]("time")
 	// Register events with their data types
 	application.RegisterEvent[SetMotionData]("live2d:set-motion")
-	application.RegisterEvent[PlayAudioData]("live2d:play-audio")
+	application.RegisterEvent[services.PlayAudioData]("live2d:play-audio")
 
 }
 
@@ -52,7 +57,26 @@ func main() {
 		SampleRate:  44100,
 		InputDevice: cfg.ASRConfig.InputDevice,
 	})
-
+	asrProvider := asr.NewASRProvider(cfg, logger)
+	asrAgent, err := asrProvider.GetASRAgent()
+	if err != nil {
+		panic(err)
+	}
+	ttsProvider := tts.NewTTSProvider(cfg, logger)
+	ttsAgent, err := ttsProvider.GetTTSAgent()
+	if err != nil {
+		panic(err)
+	}
+	llmProvider := llm.NewProvider(context.Background(), cfg)
+	llmModel, err := llmProvider.GetModel(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	assistantAgent, err := agent.NewAssistantAgent(cfg, llmModel, ttsAgent, asrAgent, logger)
+	if err != nil {
+		panic(err)
+	}
+	appService := services.NewAppService(cfg, logger, assistantAgent, audioRecorder)
 	// Create a new Wails application by providing the necessary options.
 	// Variables 'Name' and 'Description' are for application metadata.
 	// 'Assets' configures the asset server with the 'FS' variable pointing to the frontend files.
@@ -66,9 +90,11 @@ func main() {
 			application.NewServiceWithOptions(services.NewModelService(cfg, logger), application.ServiceOptions{
 				Route: "/models",
 			}),
+			application.NewService(appService),
 			application.NewService(services.NewRecorderService(cfg, audioRecorder)),
 			application.NewService(services.NewConfigService(cfg, logger)),
 		},
+
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
@@ -115,9 +141,4 @@ func main() {
 type SetMotionData struct {
 	Group string
 	Index int
-}
-
-type PlayAudioData struct {
-	Text   string
-	Base64 string
 }

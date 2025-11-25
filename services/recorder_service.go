@@ -46,14 +46,14 @@ func (a *RecorderService) StartRecording() error {
 }
 
 // StopRecording stops audio recording
-func (a *RecorderService) StopRecording() error {
+func (a *RecorderService) StopRecording() string {
 	if !a.audioRecorder.IsRecording() {
-		return nil
+		return ""
 	}
 
 	a.audioRecorder.Stop()
 	a.logger.Info("Recording stopped")
-	return nil
+	return a.audioRecorder.GetLatestAudioPath()
 }
 
 func (a *RecorderService) GetAvailableInputDevices() ([]audio.Device, error) {

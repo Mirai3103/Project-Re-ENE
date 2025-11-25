@@ -21,7 +21,7 @@ func newElevenlabsTTSAgent(cfg *ttsConfig.ElevenLabsConfig, cachingTTSAgent Cach
 	client := elevenlabs.NewClient(elevenlabs.NewClientOptions{
 		APIKey: cfg.APIKey,
 	}, logger)
-	return &elevenlabsTTSAgent{client: client, cfg: cfg, cachingTTSAgent: cachingTTSAgent}
+	return &elevenlabsTTSAgent{client: client, cfg: cfg, cachingTTSAgent: cachingTTSAgent, logger: logger}
 }
 func (a *elevenlabsTTSAgent) GetTTS(ctx context.Context, text string) ([]byte, error) {
 	log := a.logger

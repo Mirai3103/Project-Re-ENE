@@ -41,5 +41,6 @@ func NewClient(options NewClientOptions, logger *slog.Logger) *Client {
 		apiKey:  options.APIKey,
 		req:     client,
 		baseURL: utils.OrDefault(options.BaseURL, "https://api.elevenlabs.io/v1"),
+		logger:  logger,
 	}
 }

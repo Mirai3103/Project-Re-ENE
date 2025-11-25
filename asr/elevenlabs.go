@@ -24,8 +24,9 @@ func newElevenlabsASRAgent(cfg *asr.ElevenLabsConfig, logger *slog.Logger) ASRAg
 func (a *elevenlabsASRAgent) GetASR(ctx context.Context, audioData []byte) (string, error) {
 
 	response, err := a.client.CreateTranscript(ctx, audioData, elevenlabs.CreateTranscriptOptions{
-		ModelID:      a.cfg.ModelID,
-		LanguageCode: utils.Ptr(a.cfg.LanguageCode),
+		ModelID:        a.cfg.ModelID,
+		LanguageCode:   utils.Ptr(a.cfg.LanguageCode),
+		TagAudioEvents: utils.Ptr(false),
 	})
 	if err != nil {
 		return "", err

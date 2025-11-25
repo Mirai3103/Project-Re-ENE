@@ -52,6 +52,7 @@ func NewAssistantAgent(
 	llmModel model.BaseChatModel,
 	ttsAgent tts.TTSAgent,
 	asrAgent asr.ASRAgent,
+	logger *slog.Logger,
 ) (AssistantAgent, error) {
 	if ttsAgent == nil {
 		return nil, ErrNoTTSAgent
@@ -66,6 +67,7 @@ func NewAssistantAgent(
 		ttsAgent:        ttsAgent,
 		asrAgent:        asrAgent,
 		shortTermMemory: NewSimpleMemory(cfg.AgentConfig.ShortTermMemoryConfig),
+		logger:          logger,
 	}, nil
 }
 
@@ -119,6 +121,8 @@ func (a *assistantAgent) Invoke(ctx context.Context, conversationID string, inpu
 }
 
 func (a *assistantAgent) Stream(ctx context.Context, conversationID string, input UserInput) (chan SpeakResponse, error) {
+	log := a.logger
+	log.Info("Streaming input", "input", input)
 	inputText, err := a.processInput(ctx, input)
 	if err != nil {
 		return nil, err

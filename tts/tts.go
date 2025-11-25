@@ -24,7 +24,7 @@ type ttsProvider struct {
 
 func NewTTSProvider(cfg *config.Config, logger *slog.Logger) TTSProvider {
 	cachingTTSAgent := NewHashCachingTTSAgent(".cache/tts")
-	return &ttsProvider{cfg: cfg, cachingTTSAgent: cachingTTSAgent}
+	return &ttsProvider{cfg: cfg, cachingTTSAgent: cachingTTSAgent, logger: logger}
 }
 
 func (p *ttsProvider) GetTTSAgent() (TTSAgent, error) {

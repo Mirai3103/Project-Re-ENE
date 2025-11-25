@@ -30,6 +30,8 @@ type Recorder interface {
 	// GetLatestAudio retrieves the most recent recorded audio data in WAV format.
 	GetLatestAudio() []byte // read latest wav
 
+	GetLatestAudioPath() string
+
 	// IsRecording indicates whether the recorder is currently active.
 	IsRecording() bool
 
@@ -127,6 +129,10 @@ func (r *ffmpegRecorder) Start() error {
 
 	r.recording = true
 	return nil
+}
+
+func (r *ffmpegRecorder) GetLatestAudioPath() string {
+	return r.filePath
 }
 
 func (r *ffmpegRecorder) Stop() error {
