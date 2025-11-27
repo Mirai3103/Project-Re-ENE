@@ -11,3 +11,8 @@ build/*
 .cache
 .idea
 frontend/bindings/*
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.syso

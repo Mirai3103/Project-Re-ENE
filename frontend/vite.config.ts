@@ -24,4 +24,7 @@ export default defineConfig({
       "@wailsevents": path.resolve(__dirname, "./bindings/events"),
     },
   },
+  server:{
+    port:9245
+  }
 });

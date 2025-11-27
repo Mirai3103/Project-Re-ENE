@@ -15,6 +15,7 @@ import (
 	"github.com/Mirai3103/Project-Re-ENE/llm"
 	"github.com/Mirai3103/Project-Re-ENE/package/audio"
 	"github.com/Mirai3103/Project-Re-ENE/services"
+	"github.com/Mirai3103/Project-Re-ENE/store"
 	"github.com/Mirai3103/Project-Re-ENE/tts"
 	"github.com/lmittmann/tint"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -43,6 +44,11 @@ func init() {
 // and starts a goroutine that emits a time-based event every second. It subsequently runs the application and
 // logs any error that might occur.
 func main() {
+	db, err := store.NewDB()
+	if err != nil {
+		panic(err)
+	}
+	store := store.New(db)
 	cfg, err := config.LoadConfig("config.yaml")
 	w := os.Stderr
 	logger := slog.New(tint.NewHandler(w, nil))
@@ -52,7 +58,7 @@ func main() {
 	}
 	// appHandler := handlers.NewAppHandler(cfg)
 	// router := server.NewModelRouter(cfg, appHandler)
-	audioRecorder, err := audio.NewFFmpegRecorder(audio.RecorderConfig{
+	audioRecorder, _ := audio.NewFFmpegRecorder(audio.RecorderConfig{
 		Channels:    1,
 		SampleRate:  44100,
 		InputDevice: cfg.ASRConfig.InputDevice,
@@ -72,10 +78,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	assistantAgent, err := agent.NewAssistantAgent(cfg, llmModel, ttsAgent, asrAgent, logger)
+	assistantAgent, err := agent.NewAssistantAgent(cfg, llmModel, ttsAgent, asrAgent, logger, store.CharacterStore, store.UserStore, store.ConversationStore)
 	if err != nil {
 		panic(err)
 	}
+
 	appService := services.NewAppService(cfg, logger, assistantAgent, audioRecorder)
 	// Create a new Wails application by providing the necessary options.
 	// Variables 'Name' and 'Description' are for application metadata.
