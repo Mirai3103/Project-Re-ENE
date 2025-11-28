@@ -78,12 +78,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	assistantAgent, err := agent.NewAssistantAgent(cfg, llmModel, ttsAgent, asrAgent, logger, store.CharacterStore, store.UserStore, store.ConversationStore)
+	ag := agent.NewAgent(llmModel, ttsAgent, asrAgent, store.CharacterStore, store.UserStore, store.ConversationStore, &cfg.AgentConfig, logger)
+	err = ag.Compile(context.Background())
 	if err != nil {
 		panic(err)
 	}
-
-	appService := services.NewAppService(cfg, logger, assistantAgent, audioRecorder)
+	appService := services.NewAppService(cfg, logger, audioRecorder, ag)
 	// Create a new Wails application by providing the necessary options.
 	// Variables 'Name' and 'Description' are for application metadata.
 	// 'Assets' configures the asset server with the 'FS' variable pointing to the frontend files.

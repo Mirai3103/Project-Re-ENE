@@ -16,3 +16,4 @@ frontend/bindings/*
 *.db-wal
 *.db-journal
 *.syso
+.genkit

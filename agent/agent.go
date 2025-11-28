@@ -5,477 +5,279 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"strings"
-	"time"
 
-	"github.com/Mirai3103/Project-Re-ENE/agent/react"
 	"github.com/Mirai3103/Project-Re-ENE/asr"
 	"github.com/Mirai3103/Project-Re-ENE/config"
 	"github.com/Mirai3103/Project-Re-ENE/package/utils"
 	"github.com/Mirai3103/Project-Re-ENE/store"
 	"github.com/Mirai3103/Project-Re-ENE/tts"
-
-	"github.com/cloudwego/eino-ext/components/tool/googlesearch"
-	einoMcp "github.com/cloudwego/eino-ext/components/tool/mcp"
-	"github.com/cloudwego/eino/callbacks"
-	"github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino/components/prompt"
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/compose"
-	"github.com/cloudwego/eino/flow/agent"
-	"github.com/cloudwego/eino/schema"
-	"github.com/mark3labs/mcp-go/client"
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/firebase/genkit/go/ai"
+	"github.com/firebase/genkit/go/core"
+	"github.com/firebase/genkit/go/core/api"
+	"github.com/firebase/genkit/go/genkit"
+	"google.golang.org/api/customsearch/v1"
+	"google.golang.org/api/option"
 )
 
-var (
-	ErrNoTTSAgent    = errors.New("you must provide a tts agent")
-	ErrNoASRAgent    = errors.New("you must provide an asr agent")
-	ErrNoInputData   = errors.New("you must provide a text or audio")
-	ErrStreamRecv    = errors.New("error receiving stream data")
-	ErrContextCancel = errors.New("context cancelled")
-)
-
-type AssistantAgent interface {
-	CompileChain(ctx context.Context) error
-	Stream(ctx context.Context, conversationID string, input UserInput) (chan SpeakResponse, error)
+type FlowInput struct {
+	Text           string
+	chunkChan      chan string
+	Audio          []byte
+	ConversationID string
+	UserID         string
+	CharacterID    string
 }
 
-type assistantAgent struct {
-	cfg               *config.Config
-	llmModel          model.BaseChatModel
-	agent             *react.Agent
+type Agent struct {
+	llmModel          api.Plugin
 	ttsAgent          tts.TTSAgent
 	asrAgent          asr.ASRAgent
-	logger            *slog.Logger
 	characterStore    *store.CharacterStore
 	userStore         *store.UserStore
 	conversationStore *store.ConversationStore
-	promptCache       map[string]*prompt.DefaultChatTemplate
+	flow              *core.Flow[FlowInput, string, string]
+	g                 *genkit.Genkit
+	agentConfig       *config.AgentConfig
+	logger            *slog.Logger
 }
 
-type UserInput struct {
-	Text  *string `json:"text"`
-	Audio *[]byte `json:"audio"`
-	Image *[]byte `json:"image"`
-}
-
-func NewAssistantAgent(
-	cfg *config.Config,
-	llmModel model.BaseChatModel,
-	ttsAgent tts.TTSAgent,
-	asrAgent asr.ASRAgent,
-	logger *slog.Logger,
-	characterStore *store.CharacterStore,
-	userStore *store.UserStore,
-	conversationStore *store.ConversationStore,
-) (AssistantAgent, error) {
-	if ttsAgent == nil {
-		return nil, ErrNoTTSAgent
-	}
-	if asrAgent == nil {
-		return nil, ErrNoASRAgent
-	}
-
-	return &assistantAgent{
-		cfg:               cfg,
+func NewAgent(llmModel api.Plugin, ttsAgent tts.TTSAgent, asrAgent asr.ASRAgent, characterStore *store.CharacterStore, userStore *store.UserStore, conversationStore *store.ConversationStore, agentConfig *config.AgentConfig, logger *slog.Logger) *Agent {
+	return &Agent{
 		llmModel:          llmModel,
 		ttsAgent:          ttsAgent,
 		asrAgent:          asrAgent,
-		logger:            logger,
 		characterStore:    characterStore,
 		userStore:         userStore,
 		conversationStore: conversationStore,
-		promptCache:       make(map[string]*prompt.DefaultChatTemplate),
-	}, nil
+		agentConfig:       agentConfig,
+		logger:            logger,
+	}
 }
 
-func (a *assistantAgent) getSystemPrompt(characterID string, userID string) *prompt.DefaultChatTemplate {
-	cacheKey := characterID + "_" + userID
-	if template, ok := a.promptCache[cacheKey]; ok {
-		return template
-	}
-	template := NewSystemPromptBuilder(a.characterStore, a.userStore).WithCharacterId(characterID).WithUserId(userID).Build()
-
-	a.promptCache[cacheKey] = template
-	return template
+type GoogleSearchInput struct {
+	Query string
+	Num   int64
 }
 
-func (a *assistantAgent) mcpConfigsToTools(ctx context.Context, path string) ([]tool.BaseTool, error) {
-	cfg, err := ParseMCPConfigFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var tools []tool.BaseTool
-
-	for name, server := range cfg.McpServers {
-		cli, err := initMCPClient(ctx, name, server)
+func (a *Agent) getTools(ctx context.Context) ([]ai.Tool, error) {
+	var tools []ai.Tool
+	if a.agentConfig.ToolsConfig.GoogleSearch.Enable {
+		searchService, err := customsearch.NewService(ctx, option.WithAPIKey(a.agentConfig.ToolsConfig.GoogleSearch.APIKey))
 		if err != nil {
-			continue
+			goto afterGoogleSearch
 		}
-
-		ts, err := einoMcp.GetTools(ctx, &einoMcp.Config{Cli: cli})
-		if err != nil {
-			continue
-		}
-
-		tools = append(tools, ts...)
+		googleSearchTool := genkit.DefineTool(
+			a.g,
+			"googleSearch",
+			"Searches the web for a given query",
+			func(ctx *ai.ToolContext, input GoogleSearchInput) (any, error) {
+				results, err := searchService.Cse.List().Q(input.Query).Num(input.Num).Cx(a.agentConfig.ToolsConfig.GoogleSearch.SearchEngineID).Do()
+				if err != nil {
+					return nil, err
+				}
+				return results.Items, nil
+			},
+		)
+		tools = append(tools, googleSearchTool)
 	}
-
+afterGoogleSearch:
+	mcpTools, err := a.parseMcpTools(ctx)
+	if err == nil {
+		tools = append(tools, mcpTools...)
+	}
+	for _, tool := range tools {
+		a.logger.Info("Registered tool", "name", tool.Name(), "description", tool.Definition().Description)
+	}
 	return tools, nil
 }
 
-// -------------------------------------------------------------
+type ContextKey string
 
-func initMCPClient(ctx context.Context, name string, server MCPConfig) (*client.Client, error) {
-	var (
-		cli *client.Client
-		err error
-	)
+const (
+	ConversationID ContextKey = "conversationID"
+	CharacterID    ContextKey = "characterID"
+	UserID         ContextKey = "userID"
+)
 
-	switch server.GetType() {
-
-	case MCPTypeStdio:
-		env := make([]string, 0)
-		if server.Env != nil {
-			for k, v := range *server.Env {
-				env = append(env, fmt.Sprintf("%s=%s", k, v))
-			}
-		}
-
-		args := []string{}
-		if server.Args != nil {
-			args = *server.Args
-		}
-
-		cli, err = client.NewStdioMCPClient(*server.Command, env, args...)
-		if err != nil {
-			return nil, err
-		}
-
-	case MCPTypeSSE:
-		cli, err = client.NewSSEMCPClient(*server.Url)
-		if err != nil {
-			return nil, err
-		}
-		if err := cli.Start(ctx); err != nil {
-			return nil, err
-		}
-
-	default:
-		return nil, fmt.Errorf("unsupported MCP type: %s", server.GetType())
-	}
-
-	initReq := mcp.InitializeRequest{
-		Params: mcp.InitializeParams{
-			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
-			ClientInfo: mcp.Implementation{
-				Name:    name,
-				Version: "1.0.0",
-			},
-		},
-	}
-
-	_, err = cli.Initialize(ctx, initReq)
-	if err != nil {
-		return nil, err
-	}
-
-	return cli, nil
-}
-
-func (a *assistantAgent) CompileChain(ctx context.Context) error {
-	googleTool, _ := googlesearch.NewTool(ctx, &googlesearch.Config{
-		APIKey:         a.cfg.AgentConfig.ToolsConfig.GoogleSearch.APIKey,
-		SearchEngineID: a.cfg.AgentConfig.ToolsConfig.GoogleSearch.SearchEngineID,
-		BaseURL:        a.cfg.AgentConfig.ToolsConfig.GoogleSearch.BaseURL,
-		Num:            a.cfg.AgentConfig.ToolsConfig.GoogleSearch.Num,
-		Lang:           a.cfg.AgentConfig.ToolsConfig.GoogleSearch.Lang,
-		ToolName:       "google_search",
-		ToolDesc:       "google search tool",
-	})
-
-	mcpTools, err := a.mcpConfigsToTools(ctx, a.cfg.AgentConfig.ToolsConfig.MCP.ConfigPath)
-	if err != nil {
-		a.logger.Error("mcpConfigsToTools failed", "error", err)
-	}
-	baseTools := []tool.BaseTool{
-		googleTool,
-	}
-	for _, tool := range mcpTools {
-		info, err := tool.Info(ctx)
-		if err != nil {
-			continue
-		}
-		a.logger.Info("mcp tool", "tool", info)
-	}
-	tools := compose.ToolsNodeConfig{
-		Tools: append(baseTools, mcpTools...),
-	}
-	agent, err := react.NewAgent(ctx, &react.AgentConfig{
-		ToolCallingModel: a.llmModel.(model.ToolCallingChatModel),
-		ToolsConfig:      tools,
-		MaxStep:          20,
-		StreamToolCallChecker: func(ctx context.Context, modelOutput *schema.StreamReader[*schema.Message]) (bool, error) {
-			var isToolCall = false
-			cpyModelOutput := modelOutput.Copy(1)[0]
-			for {
-				part, err := cpyModelOutput.Recv()
-				if err == io.EOF || errors.Is(err, io.EOF) {
-					break
-				}
-				if err != nil {
-					return false, err
-				}
-				if len(part.ToolCalls) > 0 {
-					isToolCall = true
-				}
-			}
-			return isToolCall, nil
-		},
-	})
+func (a *Agent) Compile(ctx context.Context) error {
+	a.g = genkit.Init(ctx, genkit.WithPlugins(a.llmModel), genkit.WithDefaultModel("googleai/gemini-2.5-flash"))
+	tools, err := a.getTools(ctx)
 	if err != nil {
 		return err
 	}
-	a.agent = agent
-	return nil
-}
-func (a *assistantAgent) createConversationIfNotExist(conversationID string, characterID string, userID string) error {
-	_, err := a.conversationStore.GetConversation(conversationID)
-	if errors.Is(err, store.ErrNoRecordFound) {
-		err = a.conversationStore.CreateConversation(conversationID, 10, characterID, userID)
-		if err != nil {
-			a.logger.Error("createConversationIfNotExist failed", "error", err)
-			return err
-		}
+	var toolsRefs []ai.ToolRef
+	for _, tool := range tools {
+		toolsRefs = append(toolsRefs, tool)
 	}
-	return nil
-}
-func (a *assistantAgent) getChatHistory(conversationID string) ([]*schema.Message, error) {
-	messages, err := a.conversationStore.GetMessages(conversationID)
-	if err != nil {
-		return nil, err
-	}
-	chatHistory := make([]*schema.Message, len(messages))
-	for i, message := range messages {
-		jsonRaw := []byte(message.Content)
-		var message schema.Message
-		err = json.Unmarshal(jsonRaw, &message)
-		if err != nil {
-			return nil, err
-		}
-		chatHistory[i] = &message
+	agentFlow := genkit.DefineStreamingFlow(
+		a.g,
+		"agentFlow",
+		func(ctx context.Context, input FlowInput, callback core.StreamCallback[string]) (string, error) {
+			a.conversationStore.CreateConversationIfNotExists(input.ConversationID, a.agentConfig.ShortTermMemoryConfig.MaxWindowSize, input.CharacterID, input.UserID)
 
-	}
-	return chatHistory, nil
-}
-func (a *assistantAgent) appendMessage(conversationID string, message *schema.Message) error {
-	role := string(message.Role)
-	jsonRaw, err := json.Marshal(message)
-	if err != nil {
-		return err
-	}
-	content := string(jsonRaw)
-	err = a.conversationStore.AppendMessage(conversationID, &store.ConversationMessage{
-		Role:      role,
-		Content:   content,
-		CreatedAt: time.Now(),
-	})
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (a *assistantAgent) Stream(ctx context.Context, conversationID string, input UserInput) (chan SpeakResponse, error) {
-	log := a.logger
-	log.Info("Streaming input", "input", input)
-	inputText, err := a.processInput(ctx, input)
-	if err != nil {
-		return nil, err
-	}
-
-	chatHistory, err := a.getChatHistory(conversationID)
-	if err != nil {
-		return nil, err
-	}
-	prompts, err := a.getSystemPrompt("1", "huuhoang").Format(ctx, map[string]any{
-		USER_INPUT_KEY: inputText,
-		USER_IMAGE_KEY: input.Image,
-		"chat_history": chatHistory,
-	})
-	if err != nil {
-		return nil, err
-	}
-	contentChan := make(chan string, 100)
-	cb := callbacks.NewHandlerBuilder().OnEndWithStreamOutputFn(
-		func(ctx context.Context, info *callbacks.RunInfo, output *schema.StreamReader[callbacks.CallbackOutput]) context.Context {
-			cloneOutput := output.Copy(1)[0]
-			for {
-				part, err := cloneOutput.Recv()
-				if err == io.EOF || errors.Is(err, io.EOF) {
-					break
-				}
-
-				if v, ok := part.(*model.CallbackOutput); ok {
-					contentChan <- v.Message.Content
-				}
-			}
-			return ctx
-		}).Build()
-	ch := make(chan SpeakResponse)
-	go a.handleStream(ctx, conversationID, inputText, ch, contentChan)
-	go func() {
-		defer close(contentChan)
-		stream, err := a.agent.Stream(ctx, prompts, agent.WithComposeOptions(compose.WithCallbacks(cb)))
-		if err != nil {
-			return
-		}
-		// defer close(stringOutPutChan) // Đóng channel khi stream kết thúc
-		for {
-			_, err := stream.Recv()
+			messages, err := a.conversationStore.GetMessages(input.ConversationID)
 			if err != nil {
-				if err == io.EOF {
-					log.Info("Stream source finished (EOF)")
+				a.logger.Error("Lỗi khi lấy tin nhắn", "error", err)
+
+			}
+			historyMessages := make([]*ai.Message, len(messages))
+			for i, message := range messages {
+				var hm ai.Message
+				err := json.Unmarshal([]byte(message.Content), &hm)
+				if err != nil {
+					a.logger.Error("Lỗi khi unmarshal tin nhắn", "error", err)
 				} else {
-					log.Error("Stream source error", "error", err)
+					historyMessages[i] = &hm
 				}
-				return
+			}
+
+			ctx = context.WithValue(ctx, ConversationID, input.ConversationID)
+			ctx = context.WithValue(ctx, CharacterID, input.CharacterID)
+			ctx = context.WithValue(ctx, UserID, input.UserID)
+			finalResp, err := genkit.Generate(
+				ctx,
+				a.g,
+				ai.WithSystem(NewPrompt(a.characterStore, a.userStore, a.conversationStore, &input)),
+				ai.WithMessages(historyMessages...),
+				ai.WithPrompt(input.Text),
+				ai.WithTools(toolsRefs...),
+				ai.WithStreaming(func(ctx context.Context, chunk *ai.ModelResponseChunk) error {
+					a.logger.Info("Chunk", "text", chunk.Text())
+					input.chunkChan <- chunk.Text()
+					return callback(ctx, chunk.Text())
+				}),
+				ai.WithMiddleware(a.SaveConversationMiddleware),
+			)
+			if err != nil {
+				a.logger.Error("Generation error", "error", err)
+				return "", err
+			}
+			return finalResp.Text(), nil
+		},
+	)
+	a.flow = agentFlow
+	return nil
+}
+
+func (a *Agent) preProcessInput(ctx context.Context, input *FlowInput) (*FlowInput, error) {
+	trimmedText := strings.TrimSpace(input.Text)
+
+	// Case 1: Empty input
+	if trimmedText == "" && input.Audio == nil {
+		return nil, errors.New("text or audio is required")
+	}
+
+	// Case 2: Has text - prioritize text over audio
+	if trimmedText != "" {
+		input.Text = trimmedText
+		input.Audio = nil // Clear audio to avoid confusion
+		return input, nil
+	}
+
+	// Case 3: Only has audio - transcribe it
+	transcribedText, err := a.asrAgent.GetASR(ctx, input.Audio)
+	if err != nil {
+		return nil, fmt.Errorf("ASR transcription failed: %w", err)
+	}
+
+	input.Text = strings.TrimSpace(transcribedText)
+
+	// Case 4: Transcription returned empty text
+	if input.Text == "" {
+		return nil, errors.New("transcription returned empty text")
+	}
+
+	return input, nil
+}
+
+func (a *Agent) InferSpeak(ctx context.Context, input *FlowInput) (chan SpeakResponse, error) {
+	input, err := a.preProcessInput(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	input.chunkChan = make(chan string, 20)
+	resultChan := make(chan SpeakResponse, 20)
+
+	// Start flow in goroutine
+	go func() {
+		input.Audio = []byte(input.Text)
+		chunks := a.flow.Stream(ctx, *input)
+
+		a.logger.Info("Flow completed", "final response", chunks)
+		for chunk := range chunks {
+			if chunk == nil {
+				continue
+			}
+			if chunk.Done {
+				break
 			}
 		}
+
+		close(input.chunkChan) // Signal that streaming is complete
 	}()
 
-	return ch, nil
+	// Process chunks and convert to speech
+	go a.handleStreamToSpeech(ctx, input.chunkChan, resultChan)
+
+	return resultChan, nil
 }
 
-// processInput extracts text from UserInput (either from Text or Audio via ASR)
-func (a *assistantAgent) processInput(ctx context.Context, input UserInput) (string, error) {
-
-	if input.Text != nil {
-		return *input.Text, nil
-	}
-
-	if input.Audio != nil {
-		text, err := a.asrAgent.GetASR(ctx, *input.Audio)
-
-		if err != nil {
-			return "", err
-		}
-		if strings.TrimSpace(text) == "" {
-			return "", ErrNoInputData
-		}
-		return text, nil
-	}
-
-	return "", ErrNoInputData
-}
-
-// handleStream processes the LLM stream, generates TTS, and sends responses
-func (a *assistantAgent) handleStream(
+func (a *Agent) handleStreamToSpeech(
 	ctx context.Context,
-	conversationID string,
-	inputText string,
-	ch chan SpeakResponse,
-	stringOutPutChan chan string,
-
+	chunkChan <-chan string,
+	resultChan chan<- SpeakResponse,
 ) {
-	log := a.logger
-	defer close(ch)
+	defer close(resultChan)
 
-	var fullResponse strings.Builder
-	buffer := ""
+	var buffer string
 
-	// 1. Goroutine phụ: Dùng để duy trì stream và đóng channel text khi xong
-
-	// Always save conversation before returning
-	defer func() {
-		err := a.appendMessage(conversationID, schema.AssistantMessage(fullResponse.String(), nil))
-		if err != nil {
-			log.Error("appendMessage failed", "error", err)
-			return
-		}
-		err = a.appendMessage(conversationID, schema.UserMessage(inputText))
-		if err != nil {
-			log.Error("appendMessage failed", "error", err)
-			return
-		}
-	}()
-
-	// 2. Luồng chính: Xử lý text từ channel
-	for content := range stringOutPutChan {
+	for chunk := range chunkChan {
 		// Check context cancellation
 		if err := ctx.Err(); err != nil {
-			log.Error("Context cancelled", "error", err, "fullResponse", fullResponse.String())
-			a.flushBuffer(ctx, buffer, ch, log)
+			a.logger.Error("Context cancelled", "error", err)
 			return
 		}
 
-		// Accumulate full response
-		fullResponse.WriteString(content)
-		buffer += content
-
-		// Process complete sentences
-		buffer = a.processAndSendSentences(ctx, buffer, ch, log)
+		buffer += chunk
+		buffer = a.processCompleteSentences(ctx, buffer, resultChan)
 	}
 
-	// 3. Khi stringOutPutChan đóng (vòng for ở trên kết thúc), flush phần còn lại
-	log.Info("Channel closed, flushing buffer", "fullResponse", fullResponse.String())
-	a.flushBuffer(ctx, buffer, ch, log)
+	// Process remaining buffer
+	a.flushBuffer(ctx, buffer, resultChan)
 }
 
-// processAndSendSentences splits buffer into sentences, processes complete ones, returns incomplete
-func (a *assistantAgent) processAndSendSentences(
+func (a *Agent) processCompleteSentences(
 	ctx context.Context,
 	buffer string,
-	ch chan SpeakResponse,
-	log *slog.Logger,
+	resultChan chan<- SpeakResponse,
 ) string {
 	sentences := utils.SplitSentences(buffer)
 
-	// Process all complete sentences (all except the last one which might be incomplete)
+	// Process all complete sentences (all except last which might be incomplete)
 	for i := 0; i < len(sentences)-1; i++ {
 		sentence := strings.TrimSpace(sentences[i])
 		if sentence == "" {
 			continue
 		}
 
-		// Check context before TTS
-		if err := ctx.Err(); err != nil {
-			log.Error("Context cancelled during sentence processing", "error", err)
-			return ""
-		}
-
-		audio, err := a.ttsAgent.GetTTS(ctx, sentence)
-		if err != nil {
-			log.Error("TTS generation failed", "error", err, "sentence", sentence)
-			continue
-		}
-
-		// Send response with context check
-		select {
-		case <-ctx.Done():
-			log.Error("Context cancelled during send", "error", ctx.Err())
-			return ""
-		case ch <- SpeakResponse{Text: sentence, AudioBuffer: audio}:
+		if err := a.sendSpeechResponse(ctx, sentence, resultChan); err != nil {
+			return "" // Stop processing on context cancellation
 		}
 	}
 
-	// Return the last (potentially incomplete) sentence as the new buffer
+	// Return the last (potentially incomplete) sentence
 	if len(sentences) > 0 {
 		return sentences[len(sentences)-1]
 	}
 	return ""
 }
 
-// flushBuffer processes and sends any remaining text in the buffer
-func (a *assistantAgent) flushBuffer(
+func (a *Agent) flushBuffer(
 	ctx context.Context,
 	buffer string,
-	ch chan SpeakResponse,
-	log *slog.Logger,
+	resultChan chan<- SpeakResponse,
 ) {
 	if buffer == "" {
 		return
@@ -488,17 +290,35 @@ func (a *assistantAgent) flushBuffer(
 			continue
 		}
 
-		audio, err := a.ttsAgent.GetTTS(ctx, sentence)
-		if err != nil {
-			log.Error("TTS generation failed in flush", "error", err, "sentence", sentence)
-			continue
+		if err := a.sendSpeechResponse(ctx, sentence, resultChan); err != nil {
+			return // Stop on context cancellation
 		}
+	}
+}
 
-		select {
-		case <-ctx.Done():
-			log.Error("Context cancelled during flush", "error", ctx.Err())
-			return
-		case ch <- SpeakResponse{Text: sentence, AudioBuffer: audio}:
-		}
+func (a *Agent) sendSpeechResponse(
+	ctx context.Context,
+	text string,
+	resultChan chan<- SpeakResponse,
+) error {
+	// Check context before expensive TTS operation
+	if err := ctx.Err(); err != nil {
+		a.logger.Error("Context cancelled before TTS", "error", err)
+		return err
+	}
+
+	audio, err := a.ttsAgent.GetTTS(ctx, text)
+	if err != nil {
+		a.logger.Error("TTS generation failed", "error", err, "text", text)
+		return nil // Continue processing other sentences
+	}
+
+	// Send with context check
+	select {
+	case <-ctx.Done():
+		a.logger.Error("Context cancelled during send", "error", ctx.Err())
+		return ctx.Err()
+	case resultChan <- SpeakResponse{Text: text, AudioBuffer: audio}:
+		return nil
 	}
 }

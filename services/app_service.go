@@ -13,42 +13,40 @@ import (
 )
 
 type AppService struct {
-	cfg            *config.Config
-	logger         *slog.Logger
-	assistantAgent agent.AssistantAgent
-	audioRecorder  audio.Recorder
+	cfg           *config.Config
+	logger        *slog.Logger
+	audioRecorder audio.Recorder
+	ag            *agent.Agent
 }
 
-func NewAppService(cfg *config.Config, logger *slog.Logger, assistantAgent agent.AssistantAgent, audioRecorder audio.Recorder) *AppService {
-	return &AppService{cfg: cfg, logger: logger, assistantAgent: assistantAgent, audioRecorder: audioRecorder}
+func NewAppService(cfg *config.Config, logger *slog.Logger, audioRecorder audio.Recorder, ag *agent.Agent) *AppService {
+	return &AppService{cfg: cfg, logger: logger, audioRecorder: audioRecorder, ag: ag}
 }
 
 func (a *AppService) InvokeWithAudio(ctx context.Context, conversationID string, audioPath string) error {
 	if a.audioRecorder.IsRecording() {
-		return errors.New("audio recorder is recording")
+		return errors.New("au recorder is recording")
 	}
-	audio, err := os.ReadFile(audioPath)
+	au, err := os.ReadFile(audioPath)
 	if err != nil {
 		return err
 	}
-	speakResponseStream, err := a.assistantAgent.Stream(ctx, conversationID, agent.UserInput{Audio: &audio})
-	if err != nil {
-		return err
-	}
-	return a.processStreamingResponses(ctx, speakResponseStream, func() {
-		a.audioRecorder.ClearData()
+	speakChan, err := a.ag.InferSpeak(ctx, &agent.FlowInput{
+		Audio:          au,
+		CharacterID:    "1",
+		UserID:         "huuhoang",
+		ConversationID: conversationID,
 	})
-}
-func (a *AppService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
-	if err := a.assistantAgent.CompileChain(ctx); err != nil {
+	if err != nil {
 		return err
+	}
+	err = a.processStreamingResponses(ctx, speakChan, func() {
+		a.logger.Info("Streaming responses completed")
+	})
+	if err != nil {
+		a.logger.Error("Error processing streaming responses", "error", err)
 	}
 	return nil
-}
-
-type PlayAudioData struct {
-	Text   string
-	Base64 string
 }
 
 func (a *AppService) processStreamingResponses(ctx context.Context, stream chan agent.SpeakResponse, onDone func()) error {
@@ -64,4 +62,9 @@ func (a *AppService) processStreamingResponses(ctx context.Context, stream chan 
 	}
 	onDone()
 	return nil
+}
+
+type PlayAudioData struct {
+	Text   string
+	Base64 string
 }
