@@ -10,3 +10,7 @@ func OrDefault[T any](value *T, defaultValue T) T {
 func Ptr[T any](value T) *T {
 	return &value
 }
+
+func IsNilOrBlank(s *string) bool {
+	return s == nil || *s == ""
+}

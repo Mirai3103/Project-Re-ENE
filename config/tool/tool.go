@@ -22,7 +22,7 @@ type MCPToolConfig struct {
 func getDefaultMCPToolConfig() *MCPToolConfig {
 	return &MCPToolConfig{
 		ConfigPath: "./resources/mcp/config.json",
-		Enable:     true,
+		Enable:     false,
 	}
 }
 func getDefaultGoogleSearchToolConfig() *GoogleSearchToolConfig {
