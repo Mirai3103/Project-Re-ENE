@@ -1,6 +1,8 @@
 package store
 
 import (
+	"errors"
+
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
@@ -35,6 +37,13 @@ func (c *ConversationStore) CreateConversation(Id string, maxWindowSize int, cha
 		return err
 	}
 	return nil
+}
+func (c *ConversationStore) CreateConversationIfNotExists(Id string, maxWindowSize int, characterID string, userID string) error {
+	_, err := c.GetConversation(Id)
+	if errors.Is(err, ErrNoRecordFound) {
+		return c.CreateConversation(Id, maxWindowSize, characterID, userID)
+	}
+	return err
 }
 
 func (c *ConversationStore) GetMessages(conversationId string) ([]*ConversationMessage, error) {

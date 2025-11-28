@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -92,6 +93,14 @@ afterGoogleSearch:
 	return tools, nil
 }
 
+type ContextKey string
+
+const (
+	ConversationID ContextKey = "conversationID"
+	CharacterID    ContextKey = "characterID"
+	UserID         ContextKey = "userID"
+)
+
 func (a *Agent) Compile(ctx context.Context) error {
 	a.g = genkit.Init(ctx, genkit.WithPlugins(a.llmModel), genkit.WithDefaultModel("googleai/gemini-2.5-flash"))
 	tools, err := a.getTools(ctx)
@@ -106,11 +115,32 @@ func (a *Agent) Compile(ctx context.Context) error {
 		a.g,
 		"agentFlow",
 		func(ctx context.Context, input FlowInput, callback core.StreamCallback[string]) (string, error) {
+			a.conversationStore.CreateConversationIfNotExists(input.ConversationID, a.agentConfig.ShortTermMemoryConfig.MaxWindowSize, input.CharacterID, input.UserID)
 
+			messages, err := a.conversationStore.GetMessages(input.ConversationID)
+			if err != nil {
+				a.logger.Error("Lỗi khi lấy tin nhắn", "error", err)
+
+			}
+			historyMessages := make([]*ai.Message, len(messages))
+			for i, message := range messages {
+				var hm ai.Message
+				err := json.Unmarshal([]byte(message.Content), &hm)
+				if err != nil {
+					a.logger.Error("Lỗi khi unmarshal tin nhắn", "error", err)
+				} else {
+					historyMessages[i] = &hm
+				}
+			}
+
+			ctx = context.WithValue(ctx, ConversationID, input.ConversationID)
+			ctx = context.WithValue(ctx, CharacterID, input.CharacterID)
+			ctx = context.WithValue(ctx, UserID, input.UserID)
 			finalResp, err := genkit.Generate(
 				ctx,
 				a.g,
 				ai.WithSystem(NewPrompt(a.characterStore, a.userStore, a.conversationStore, &input)),
+				ai.WithMessages(historyMessages...),
 				ai.WithPrompt(input.Text),
 				ai.WithTools(toolsRefs...),
 				ai.WithStreaming(func(ctx context.Context, chunk *ai.ModelResponseChunk) error {

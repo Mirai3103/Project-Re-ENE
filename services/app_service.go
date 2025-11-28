@@ -32,9 +32,10 @@ func (a *AppService) InvokeWithAudio(ctx context.Context, conversationID string,
 		return err
 	}
 	speakChan, err := a.ag.InferSpeak(ctx, &agent.FlowInput{
-		Audio:       au,
-		CharacterID: "1",
-		UserID:      "huuhoang",
+		Audio:          au,
+		CharacterID:    "1",
+		UserID:         "huuhoang",
+		ConversationID: conversationID,
 	})
 	if err != nil {
 		return err
