@@ -19,8 +19,15 @@ function App() {
       if (location[0].startsWith("/settings")) {
         await Window.Maximise();
       } else {
-        await Window.SetSize(400, 400);
-        await Window.Center();
+        // Check if window is currently maximized or large enough
+        const size = await Window.Size();
+        // If window is smaller than the breakpoint for showing chat (1280px), set to compact size
+        // Otherwise, keep the current size for the chat panel layout
+        if (size.width < 1280) {
+          await Window.SetSize(400, 400);
+          await Window.Center();
+        }
+        // If already wide enough, let user keep their preferred size
       }
     }
     adjustWindow();

@@ -84,6 +84,7 @@ func main() {
 		panic(err)
 	}
 	appService := services.NewAppService(cfg, logger, audioRecorder, ag)
+	chatService := services.NewChatService(cfg, logger, store.ConversationStore)
 	// Create a new Wails application by providing the necessary options.
 	// Variables 'Name' and 'Description' are for application metadata.
 	// 'Assets' configures the asset server with the 'FS' variable pointing to the frontend files.
@@ -100,6 +101,7 @@ func main() {
 			application.NewService(appService),
 			application.NewService(services.NewRecorderService(cfg, audioRecorder)),
 			application.NewService(services.NewConfigService(cfg, logger)),
+			application.NewService(chatService),
 		},
 
 		Assets: application.AssetOptions{

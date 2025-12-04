@@ -61,10 +61,16 @@ func (a *AppService) processStreamingResponses(ctx context.Context, stream chan 
 		})
 	}
 	onDone()
+	application.Get().Event.Emit("live2d:play-audio", PlayAudioData{
+		Text:   "",
+		Base64: "",
+		IsDone: true,
+	})
 	return nil
 }
 
 type PlayAudioData struct {
 	Text   string
 	Base64 string
+	IsDone bool
 }
