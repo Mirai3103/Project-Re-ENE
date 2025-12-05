@@ -20,6 +20,7 @@ func NewPrompt(characterStore *store.CharacterStore, userStore *store.UserStore,
 		{{ range .user_facts }}
 		{{ .Name }}: {{ .Value }}
 		{{ end }}
+		 Chỉ trả lời ngắn gọn, tối đa 3 câu.
 `
 	t := template.Must(template.New("system_prompt").Parse(promptTemplate))
 	userFacts, _ := userStore.GetUserFacts(input.UserID, 10)

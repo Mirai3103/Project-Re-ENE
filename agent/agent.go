@@ -115,7 +115,10 @@ func (a *Agent) Compile(ctx context.Context) error {
 		a.g,
 		"agentFlow",
 		func(ctx context.Context, input FlowInput, callback core.StreamCallback[string]) (string, error) {
-			a.conversationStore.CreateConversationIfNotExists(input.ConversationID, a.agentConfig.ShortTermMemoryConfig.MaxWindowSize, input.CharacterID, input.UserID)
+			err := a.conversationStore.CreateConversationIfNotExists(input.ConversationID, a.agentConfig.ShortTermMemoryConfig.MaxWindowSize, input.CharacterID, input.UserID)
+			if err != nil {
+				return "", err
+			}
 
 			messages, err := a.conversationStore.GetMessages(input.ConversationID)
 			if err != nil {

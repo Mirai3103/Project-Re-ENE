@@ -48,6 +48,24 @@ func (a *AppService) InvokeWithAudio(ctx context.Context, conversationID string,
 	}
 	return nil
 }
+func (a *AppService) InvokeWithText(ctx context.Context, conversationID string, text string) error {
+	speakChan, err := a.ag.InferSpeak(ctx, &agent.FlowInput{
+		Text:           text,
+		CharacterID:    "1",
+		UserID:         "huuhoang",
+		ConversationID: conversationID,
+	})
+	if err != nil {
+		return err
+	}
+	err = a.processStreamingResponses(ctx, speakChan, func() {
+		a.logger.Info("Streaming responses completed")
+	})
+	if err != nil {
+		a.logger.Error("Error processing streaming responses", "error", err)
+	}
+	return nil
+}
 
 func (a *AppService) processStreamingResponses(ctx context.Context, stream chan agent.SpeakResponse, onDone func()) error {
 	defer onDone()
