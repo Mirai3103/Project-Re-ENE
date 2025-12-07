@@ -5,19 +5,10 @@ import (
 	"embed"
 	_ "embed"
 	"log"
-	"log/slog"
-	"os"
 	"time"
 
-	"github.com/Mirai3103/Project-Re-ENE/agent"
-	"github.com/Mirai3103/Project-Re-ENE/asr"
 	"github.com/Mirai3103/Project-Re-ENE/config"
-	"github.com/Mirai3103/Project-Re-ENE/llm"
-	"github.com/Mirai3103/Project-Re-ENE/package/audio"
 	"github.com/Mirai3103/Project-Re-ENE/services"
-	"github.com/Mirai3103/Project-Re-ENE/store"
-	"github.com/Mirai3103/Project-Re-ENE/tts"
-	"github.com/lmittmann/tint"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -44,47 +35,25 @@ func init() {
 // and starts a goroutine that emits a time-based event every second. It subsequently runs the application and
 // logs any error that might occur.
 func main() {
-	db, err := store.NewDB()
-	if err != nil {
-		panic(err)
-	}
-	store := store.New(db)
+	// Load configuration
 	cfg, err := config.LoadConfig("config.yaml")
-	w := os.Stderr
-	logger := slog.New(tint.NewHandler(w, nil))
+	if err != nil {
+		panic(err)
+	}
 
+	// Initialize all dependencies using Wire
+	ctx := context.Background()
+	app_deps, err := InitializeApplication(ctx, cfg)
 	if err != nil {
 		panic(err)
 	}
-	// appHandler := handlers.NewAppHandler(cfg)
-	// router := server.NewModelRouter(cfg, appHandler)
-	audioRecorder, _ := audio.NewFFmpegRecorder(audio.RecorderConfig{
-		Channels:    1,
-		SampleRate:  44100,
-		InputDevice: cfg.ASRConfig.InputDevice,
-	})
-	asrProvider := asr.NewASRProvider(cfg, logger)
-	asrAgent, err := asrProvider.GetASRAgent()
+
+	// Compile the agent
+	err = app_deps.Agent.Compile(ctx)
 	if err != nil {
 		panic(err)
 	}
-	ttsProvider := tts.NewTTSProvider(cfg, logger)
-	ttsAgent, err := ttsProvider.GetTTSAgent()
-	if err != nil {
-		panic(err)
-	}
-	llmProvider := llm.NewProvider(context.Background(), cfg)
-	llmModel, modelArg, err := llmProvider.GetModel(context.Background())
-	if err != nil {
-		panic(err)
-	}
-	ag := agent.NewAgent(llmModel, modelArg, ttsAgent, asrAgent, store.CharacterStore, store.UserStore, store.ConversationStore, &cfg.AgentConfig, logger)
-	err = ag.Compile(context.Background())
-	if err != nil {
-		panic(err)
-	}
-	appService := services.NewAppService(cfg, logger, audioRecorder, ag)
-	chatService := services.NewChatService(cfg, logger, store.ConversationStore)
+
 	// Create a new Wails application by providing the necessary options.
 	// Variables 'Name' and 'Description' are for application metadata.
 	// 'Assets' configures the asset server with the 'FS' variable pointing to the frontend files.
@@ -95,13 +64,13 @@ func main() {
 		Description: "A demo of using raw HTML & CSS",
 
 		Services: []application.Service{
-			application.NewServiceWithOptions(services.NewModelService(cfg, logger), application.ServiceOptions{
+			application.NewServiceWithOptions(app_deps.ModelService, application.ServiceOptions{
 				Route: "/models",
 			}),
-			application.NewService(appService),
-			application.NewService(services.NewRecorderService(cfg, audioRecorder)),
-			application.NewService(services.NewConfigService(cfg, logger)),
-			application.NewService(chatService),
+			application.NewService(app_deps.AppService),
+			application.NewService(app_deps.RecorderService),
+			application.NewService(app_deps.ConfigService),
+			application.NewService(app_deps.ChatService),
 		},
 
 		Assets: application.AssetOptions{

@@ -8,6 +8,7 @@ require (
 	github.com/firebase/genkit/go v1.2.0
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/google/uuid v1.6.0
+	github.com/google/wire v0.7.0
 	github.com/hajimehoshi/go-mp3 v0.3.4
 	github.com/imroc/req/v3 v3.56.0
 	github.com/jmoiron/sqlx v1.4.0
@@ -47,7 +48,6 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
-	github.com/go-ozzo/ozzo-validation v3.6.0+incompatible // indirect
 	github.com/goccy/go-yaml v1.17.1 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect

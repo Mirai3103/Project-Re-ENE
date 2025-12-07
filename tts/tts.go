@@ -12,25 +12,17 @@ type TTSAgent interface {
 	GetTTS(ctx context.Context, text string) ([]byte, error)
 }
 
-type TTSProvider interface {
-	GetTTSAgent() (TTSAgent, error)
-}
-
 type ttsProvider struct {
 	cfg             *config.Config
 	cachingTTSAgent CachingTTSAgent
 	logger          *slog.Logger
 }
 
-func NewTTSProvider(cfg *config.Config, logger *slog.Logger) TTSProvider {
+func New(cfg *config.Config, logger *slog.Logger) (TTSAgent, error) {
 	cachingTTSAgent := NewHashCachingTTSAgent(".cache/tts")
-	return &ttsProvider{cfg: cfg, cachingTTSAgent: cachingTTSAgent, logger: logger}
-}
-
-func (p *ttsProvider) GetTTSAgent() (TTSAgent, error) {
-	switch p.cfg.TTSConfig.Provider {
+	switch cfg.TTSConfig.Provider {
 	case "elevenlabs":
-		return newElevenlabsTTSAgent(p.cfg.TTSConfig.ElevenLabsConfig, p.cachingTTSAgent, p.logger), nil
+		return newElevenlabsTTSAgent(cfg.TTSConfig.ElevenLabsConfig, cachingTTSAgent, logger), nil
 	default:
 		return nil, fmt.Errorf("tts provider not found")
 	}

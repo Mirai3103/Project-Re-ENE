@@ -2,6 +2,7 @@ package embedding
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Mirai3103/Project-Re-ENE/config"
 )
@@ -11,10 +12,12 @@ type Model interface {
 	Gets(ctx context.Context, texts []string) ([][]float32, error)
 }
 
-type Provider interface {
-	GetModel(ctx context.Context) (Model, error)
-}
-
-type provider struct {
-	cfg *config.Config
+func New(ctx context.Context, cfg *config.Config) (Model, error) {
+	// switch cfg.EmbeddingConfig.Provider {
+	// case "google":
+	// 	return newGoogleGeminiModel(ctx, cfg.EmbeddingConfig.GoogleGeminiConfig)
+	// default:
+	// 	return nil, fmt.Errorf("embedding provider not found")
+	// }
+	return nil, fmt.Errorf("embedding provider not found")
 }
