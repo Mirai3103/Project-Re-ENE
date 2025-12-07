@@ -15,7 +15,6 @@ import (
 	"github.com/Mirai3103/Project-Re-ENE/tts"
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/core"
-	"github.com/firebase/genkit/go/core/api"
 	"github.com/firebase/genkit/go/genkit"
 	"google.golang.org/api/customsearch/v1"
 	"google.golang.org/api/option"
@@ -31,7 +30,7 @@ type FlowInput struct {
 }
 
 type Agent struct {
-	llmModel          api.Plugin
+	llmModel          *genkit.Genkit
 	ttsAgent          tts.TTSAgent
 	asrAgent          asr.ASRAgent
 	characterStore    *store.CharacterStore
@@ -41,9 +40,10 @@ type Agent struct {
 	g                 *genkit.Genkit
 	agentConfig       *config.AgentConfig
 	logger            *slog.Logger
+	modelArg          ai.ModelArg
 }
 
-func NewAgent(llmModel api.Plugin, ttsAgent tts.TTSAgent, asrAgent asr.ASRAgent, characterStore *store.CharacterStore, userStore *store.UserStore, conversationStore *store.ConversationStore, agentConfig *config.AgentConfig, logger *slog.Logger) *Agent {
+func NewAgent(llmModel *genkit.Genkit, modelArg ai.ModelArg, ttsAgent tts.TTSAgent, asrAgent asr.ASRAgent, characterStore *store.CharacterStore, userStore *store.UserStore, conversationStore *store.ConversationStore, agentConfig *config.AgentConfig, logger *slog.Logger) *Agent {
 	return &Agent{
 		llmModel:          llmModel,
 		ttsAgent:          ttsAgent,
@@ -53,6 +53,7 @@ func NewAgent(llmModel api.Plugin, ttsAgent tts.TTSAgent, asrAgent asr.ASRAgent,
 		conversationStore: conversationStore,
 		agentConfig:       agentConfig,
 		logger:            logger,
+		modelArg:          modelArg,
 	}
 }
 
@@ -69,7 +70,7 @@ func (a *Agent) getTools(ctx context.Context) ([]ai.Tool, error) {
 			goto afterGoogleSearch
 		}
 		googleSearchTool := genkit.DefineTool(
-			a.g,
+			a.llmModel,
 			"googleSearch",
 			"Searches the web for a given query",
 			func(ctx *ai.ToolContext, input GoogleSearchInput) (any, error) {
@@ -102,7 +103,6 @@ const (
 )
 
 func (a *Agent) Compile(ctx context.Context) error {
-	a.g = genkit.Init(ctx, genkit.WithPlugins(a.llmModel), genkit.WithDefaultModel("googleai/gemini-2.5-flash"))
 	tools, err := a.getTools(ctx)
 	if err != nil {
 		return err
@@ -111,8 +111,9 @@ func (a *Agent) Compile(ctx context.Context) error {
 	for _, tool := range tools {
 		toolsRefs = append(toolsRefs, tool)
 	}
+
 	agentFlow := genkit.DefineStreamingFlow(
-		a.g,
+		a.llmModel,
 		"agentFlow",
 		func(ctx context.Context, input FlowInput, callback core.StreamCallback[string]) (string, error) {
 			err := a.conversationStore.CreateConversationIfNotExists(input.ConversationID, a.agentConfig.ShortTermMemoryConfig.MaxWindowSize, input.CharacterID, input.UserID)
@@ -141,15 +142,22 @@ func (a *Agent) Compile(ctx context.Context) error {
 			ctx = context.WithValue(ctx, UserID, input.UserID)
 			finalResp, err := genkit.Generate(
 				ctx,
-				a.g,
+				a.llmModel,
+				ai.WithModel(a.modelArg),
 				ai.WithSystem(NewPrompt(a.characterStore, a.userStore, a.conversationStore, &input)),
 				ai.WithMessages(historyMessages...),
 				ai.WithPrompt(input.Text),
 				ai.WithTools(toolsRefs...),
 				ai.WithStreaming(func(ctx context.Context, chunk *ai.ModelResponseChunk) error {
 					a.logger.Info("Chunk", "text", chunk.Text())
-					input.chunkChan <- chunk.Text()
-					return callback(ctx, chunk.Text())
+					trimmedText := strings.TrimSpace(chunk.Text())
+					if trimmedText != "" {
+						input.chunkChan <- trimmedText
+						return callback(ctx, chunk.Text())
+
+					}
+					return nil
+
 				}),
 				ai.WithMiddleware(a.SaveConversationMiddleware),
 			)

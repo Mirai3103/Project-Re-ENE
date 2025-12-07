@@ -74,11 +74,11 @@ func main() {
 		panic(err)
 	}
 	llmProvider := llm.NewProvider(context.Background(), cfg)
-	llmModel, err := llmProvider.GetModel(context.Background())
+	llmModel, modelArg, err := llmProvider.GetModel(context.Background())
 	if err != nil {
 		panic(err)
 	}
-	ag := agent.NewAgent(llmModel, ttsAgent, asrAgent, store.CharacterStore, store.UserStore, store.ConversationStore, &cfg.AgentConfig, logger)
+	ag := agent.NewAgent(llmModel, modelArg, ttsAgent, asrAgent, store.CharacterStore, store.UserStore, store.ConversationStore, &cfg.AgentConfig, logger)
 	err = ag.Compile(context.Background())
 	if err != nil {
 		panic(err)

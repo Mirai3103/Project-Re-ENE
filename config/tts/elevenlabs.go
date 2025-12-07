@@ -5,7 +5,6 @@ import (
 )
 
 type ElevenLabsConfig struct {
-	BaseTTSConfig
 	APIKey  string `yaml:"api_key"`
 	ModelID string `yaml:"model_id"`
 	VoiceID string `yaml:"voice_id"`

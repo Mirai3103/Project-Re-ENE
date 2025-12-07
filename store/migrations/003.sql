@@ -45,6 +45,11 @@ create table if not exists memories (
     content text not null,
     embedding F32_BLOB(1024) not null,
     importance REAL not null default 0.0,
+    confidence REAL not null default 0.0,
+    source text not null,
+    tags text not null,
+    access_count INTEGER not null default 0,
+    decay_score REAL not null default 0.0,
     last_accessed_at timestamp not null default current_timestamp,
     created_at timestamp not null default current_timestamp,
     updated_at timestamp not null default current_timestamp

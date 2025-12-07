@@ -3,7 +3,6 @@ package llm
 import "errors"
 
 type GeminiConfig struct {
-	BaseLLMConfig
 	APIKey      string  `yaml:"api_key"`
 	Model       string  `yaml:"model"`
 	BaseURL     string  `yaml:"base_url"`

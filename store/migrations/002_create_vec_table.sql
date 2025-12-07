@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     max_window_size INTEGER NOT NULL,
     character_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
+    current_summary TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
