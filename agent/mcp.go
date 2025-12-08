@@ -87,7 +87,7 @@ func (a *Agent) parseMcpTools(ctx context.Context) ([]ai.Tool, error) {
 			if err != nil {
 				return nil, err
 			}
-			mcpTools, err := client.GetActiveTools(ctx, a.g)
+			mcpTools, err := client.GetActiveTools(ctx, a.llmModel)
 			if err != nil {
 				return nil, err
 			}
@@ -102,7 +102,7 @@ func (a *Agent) parseMcpTools(ctx context.Context) ([]ai.Tool, error) {
 			if err != nil {
 				return nil, err
 			}
-			mcpTools, err := client.GetActiveTools(ctx, a.g)
+			mcpTools, err := client.GetActiveTools(ctx, a.llmModel)
 			if err != nil {
 				return nil, err
 			}

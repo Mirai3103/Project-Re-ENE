@@ -2,11 +2,11 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 
 	"github.com/Mirai3103/Project-Re-ENE/asr"
 	"github.com/Mirai3103/Project-Re-ENE/config"
@@ -27,6 +27,10 @@ type FlowInput struct {
 	ConversationID string
 	UserID         string
 	CharacterID    string
+	UserFacts      []*store.UserFact
+	CharacterFacts []*store.CharacterFact
+	User           *store.User
+	Character      *store.Character
 }
 
 type Agent struct {
@@ -37,10 +41,11 @@ type Agent struct {
 	userStore         *store.UserStore
 	conversationStore *store.ConversationStore
 	flow              *core.Flow[FlowInput, string, string]
-	g                 *genkit.Genkit
 	agentConfig       *config.AgentConfig
 	logger            *slog.Logger
 	modelArg          ai.ModelArg
+	extractMemoryFlow *ExtractMemoryFlow
+	summaryFlow       *SummaryFlow
 }
 
 func NewAgent(llmModel *genkit.Genkit, modelArg ai.ModelArg, ttsAgent tts.TTSAgent, asrAgent asr.ASRAgent, characterStore *store.CharacterStore, userStore *store.UserStore, conversationStore *store.ConversationStore, agentConfig *config.AgentConfig, logger *slog.Logger) *Agent {
@@ -54,6 +59,8 @@ func NewAgent(llmModel *genkit.Genkit, modelArg ai.ModelArg, ttsAgent tts.TTSAge
 		agentConfig:       agentConfig,
 		logger:            logger,
 		modelArg:          modelArg,
+		extractMemoryFlow: NewExtractMemoryFlow(llmModel, modelArg),
+		summaryFlow:       NewGenSummaryFlow(llmModel, modelArg),
 	}
 }
 
@@ -126,16 +133,7 @@ func (a *Agent) Compile(ctx context.Context) error {
 				a.logger.Error("Lỗi khi lấy tin nhắn", "error", err)
 
 			}
-			historyMessages := make([]*ai.Message, len(messages))
-			for i, message := range messages {
-				var hm ai.Message
-				err := json.Unmarshal([]byte(message.Content), &hm)
-				if err != nil {
-					a.logger.Error("Lỗi khi unmarshal tin nhắn", "error", err)
-				} else {
-					historyMessages[i] = &hm
-				}
-			}
+			historyMessages := ParseHistoryMessages(messages)
 
 			ctx = context.WithValue(ctx, ConversationID, input.ConversationID)
 			ctx = context.WithValue(ctx, CharacterID, input.CharacterID)
@@ -144,7 +142,7 @@ func (a *Agent) Compile(ctx context.Context) error {
 				ctx,
 				a.llmModel,
 				ai.WithModel(a.modelArg),
-				ai.WithSystem(NewPrompt(a.characterStore, a.userStore, a.conversationStore, &input)),
+				ai.WithSystem(NewPrompt(input.UserFacts, input.CharacterFacts, input.User, input.Character)),
 				ai.WithMessages(historyMessages...),
 				ai.WithPrompt(input.Text),
 				ai.WithTools(toolsRefs...),
@@ -152,7 +150,7 @@ func (a *Agent) Compile(ctx context.Context) error {
 					a.logger.Info("Chunk", "text", chunk.Text())
 					trimmedText := strings.TrimSpace(chunk.Text())
 					if trimmedText != "" {
-						input.chunkChan <- trimmedText
+						input.chunkChan <- chunk.Text()
 						return callback(ctx, chunk.Text())
 
 					}
@@ -202,17 +200,34 @@ func (a *Agent) preProcessInput(ctx context.Context, input *FlowInput) (*FlowInp
 
 	return input, nil
 }
+func (a *Agent) RetrieveRelatedInfo(ctx context.Context, input *FlowInput) *FlowInput {
+	user, _ := a.userStore.GetUser(input.UserID)
+	userFacts, _ := a.userStore.GetUserFacts(input.UserID, 20)
+	characterFacts, _ := a.characterStore.GetCharacterFacts(input.CharacterID, 20)
+
+	character, _ := a.characterStore.GetCharacter(input.CharacterID)
+	input.User = user
+	input.UserFacts = userFacts
+	input.CharacterFacts = characterFacts
+	input.Character = character
+	return input
+}
 
 func (a *Agent) InferSpeak(ctx context.Context, input *FlowInput) (chan SpeakResponse, error) {
 	input, err := a.preProcessInput(ctx, input)
 	if err != nil {
 		return nil, err
 	}
+	input = a.RetrieveRelatedInfo(ctx, input)
+
 	input.chunkChan = make(chan string, 20)
 	resultChan := make(chan SpeakResponse, 20)
 
 	// Start flow in goroutine
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		input.Audio = []byte(input.Text)
 		chunks := a.flow.Stream(ctx, *input)
 
@@ -232,6 +247,37 @@ func (a *Agent) InferSpeak(ctx context.Context, input *FlowInput) (chan SpeakRes
 	// Process chunks and convert to speech
 	go a.handleStreamToSpeech(ctx, input.chunkChan, resultChan)
 
+	go func() {
+		wg.Wait()
+		bgCtx := context.Background()
+		historyMessages, _ := a.conversationStore.GetMessages(input.ConversationID)
+		if len(historyMessages)%20 == 0 {
+			summary, err := a.summaryFlow.Run(bgCtx, ExtractInput{
+				ChatHistory:    ParseHistoryMessages(historyMessages),
+				UserFacts:      input.UserFacts,
+				CharacterFacts: input.CharacterFacts,
+				User:           input.User,
+				Character:      input.Character})
+			if err != nil {
+				a.logger.Error("Lỗi khi tạo summary", "error", err)
+				return
+			}
+			a.logger.Info("Summary", "summary", summary)
+			// todo: update summary to database
+		}
+		facts, err := a.extractMemoryFlow.Run(bgCtx, ExtractInput{
+			ChatHistory:    ParseHistoryMessages(historyMessages),
+			UserFacts:      input.UserFacts,
+			CharacterFacts: input.CharacterFacts,
+			User:           input.User,
+			Character:      input.Character})
+		if err != nil {
+			a.logger.Error("Lỗi khi tạo facts", "error", err)
+			return
+		}
+		a.logger.Info("Facts", "facts", facts)
+		// todo: save facts to database
+	}()
 	return resultChan, nil
 }
 

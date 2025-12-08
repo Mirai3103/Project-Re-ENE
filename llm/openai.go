@@ -24,7 +24,7 @@ func newOpenAIModel(ctx context.Context, cfg *llmConfig.OpenAIConfig) (*genkit.G
 		BaseURL:  cfg.BaseURL,
 	}
 	g := genkit.Init(ctx, genkit.WithPlugins(o), genkit.WithDefaultModel(key+"/"+cfg.Model))
-	modelRef := o.DefineModel(key+"/"+cfg.Model, cfg.Model, ai.ModelOptions{
+	modelRef := o.DefineModel("", key+"/"+cfg.Model, ai.ModelOptions{
 		Supports: &ai.ModelSupports{
 			Tools:      true,
 			SystemRole: true,

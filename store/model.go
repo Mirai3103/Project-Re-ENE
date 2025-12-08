@@ -3,13 +3,14 @@ package store
 import "time"
 
 type Conversation struct {
-	ID            string    `json:"id" db:"id"`
-	Title         *string   `json:"title" db:"title"`
-	MaxWindowSize int       `json:"max_window_size" db:"max_window_size"`
-	CharacterID   string    `json:"character_id" db:"character_id"`
-	UserID        string    `json:"user_id" db:"user_id"`
-	CreatedAt     time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at" db:"updated_at"`
+	ID             string    `json:"id" db:"id"`
+	Title          *string   `json:"title" db:"title"`
+	MaxWindowSize  int       `json:"max_window_size" db:"max_window_size"`
+	CharacterID    string    `json:"character_id" db:"character_id"`
+	UserID         string    `json:"user_id" db:"user_id"`
+	CurrentSummary *string   `json:"current_summary" db:"current_summary"`
+	CreatedAt      time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
 }
 
 type ConversationMessage struct {

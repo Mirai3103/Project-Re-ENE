@@ -47,7 +47,7 @@ func (c *ConversationStore) CreateConversationIfNotExists(Id string, maxWindowSi
 }
 
 func (c *ConversationStore) GetMessages(conversationId string) ([]*ConversationMessage, error) {
-	rows := []*ConversationMessage{}
+	var rows []*ConversationMessage
 	err := c.db.Select(&rows, "SELECT * FROM conversation_messages WHERE conversation_id = ?", conversationId)
 	if err != nil {
 		return nil, cleanError(err)

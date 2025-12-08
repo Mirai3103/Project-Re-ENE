@@ -5,54 +5,54 @@ create table if not exists characters (
     name text ,
     base_prompt text ,
     description text ,
-    updated_at timestamp not null default current_timestamp,
-    created_at timestamp not null default current_timestamp
+    updated_at timestamp  default current_timestamp,
+    created_at timestamp  default current_timestamp
 );
 
 create table if not exists character_facts (
     id text primary key,
-    character_id text not null,
-    name text not null,
-    value text not null,
-    type text not null,
-    created_at timestamp not null default current_timestamp,
-    updated_at timestamp not null default current_timestamp
+    character_id text ,
+    name text ,
+    value text ,
+    type text ,
+    created_at timestamp  default current_timestamp,
+    updated_at timestamp  default current_timestamp
 );
 
 
 create table if not exists users (
     id text primary key,
-    name text not null,
-    bio text not null,
-    created_at timestamp not null default current_timestamp,
-    updated_at timestamp not null default current_timestamp
+    name text ,
+    bio text ,
+    created_at timestamp  default current_timestamp,
+    updated_at timestamp  default current_timestamp
 );
 
 create table if not exists user_facts (
     id text primary key,
-    name text not null,
-    value text not null,
-    type text not null,
-    user_id text not null,
-    created_at timestamp not null default current_timestamp,
-    updated_at timestamp not null default current_timestamp
+    name text ,
+    value text ,
+    type text ,
+    user_id text ,
+    created_at timestamp  default current_timestamp,
+    updated_at timestamp  default current_timestamp
 );
 
 create table if not exists memories (
     id text primary key,
-    user_id text not null,
-    character_id text not null,
-    content text not null,
-    embedding F32_BLOB(1024) not null,
-    importance REAL not null default 0.0,
-    confidence REAL not null default 0.0,
-    source text not null,
-    tags text not null,
-    access_count INTEGER not null default 0,
-    decay_score REAL not null default 0.0,
-    last_accessed_at timestamp not null default current_timestamp,
-    created_at timestamp not null default current_timestamp,
-    updated_at timestamp not null default current_timestamp
+    user_id text ,
+    character_id text ,
+    content text ,
+    embedding F32_BLOB(1024) ,
+    importance REAL  default 0.0,
+    confidence REAL  default 0.0,
+    source text ,
+    tags text ,
+    access_count INTEGER  default 0,
+    decay_score REAL  default 0.0,
+    last_accessed_at timestamp  default current_timestamp,
+    created_at timestamp  default current_timestamp,
+    updated_at timestamp  default current_timestamp
 );
 
 
