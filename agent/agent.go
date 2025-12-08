@@ -2,11 +2,11 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 
 	"github.com/Mirai3103/Project-Re-ENE/asr"
 	"github.com/Mirai3103/Project-Re-ENE/config"
@@ -15,7 +15,6 @@ import (
 	"github.com/Mirai3103/Project-Re-ENE/tts"
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/core"
-	"github.com/firebase/genkit/go/core/api"
 	"github.com/firebase/genkit/go/genkit"
 	"google.golang.org/api/customsearch/v1"
 	"google.golang.org/api/option"
@@ -28,22 +27,28 @@ type FlowInput struct {
 	ConversationID string
 	UserID         string
 	CharacterID    string
+	UserFacts      []*store.UserFact
+	CharacterFacts []*store.CharacterFact
+	User           *store.User
+	Character      *store.Character
 }
 
 type Agent struct {
-	llmModel          api.Plugin
+	llmModel          *genkit.Genkit
 	ttsAgent          tts.TTSAgent
 	asrAgent          asr.ASRAgent
 	characterStore    *store.CharacterStore
 	userStore         *store.UserStore
 	conversationStore *store.ConversationStore
 	flow              *core.Flow[FlowInput, string, string]
-	g                 *genkit.Genkit
 	agentConfig       *config.AgentConfig
 	logger            *slog.Logger
+	modelArg          ai.ModelArg
+	extractMemoryFlow *ExtractMemoryFlow
+	summaryFlow       *SummaryFlow
 }
 
-func NewAgent(llmModel api.Plugin, ttsAgent tts.TTSAgent, asrAgent asr.ASRAgent, characterStore *store.CharacterStore, userStore *store.UserStore, conversationStore *store.ConversationStore, agentConfig *config.AgentConfig, logger *slog.Logger) *Agent {
+func NewAgent(llmModel *genkit.Genkit, modelArg ai.ModelArg, ttsAgent tts.TTSAgent, asrAgent asr.ASRAgent, characterStore *store.CharacterStore, userStore *store.UserStore, conversationStore *store.ConversationStore, agentConfig *config.AgentConfig, logger *slog.Logger) *Agent {
 	return &Agent{
 		llmModel:          llmModel,
 		ttsAgent:          ttsAgent,
@@ -53,6 +58,9 @@ func NewAgent(llmModel api.Plugin, ttsAgent tts.TTSAgent, asrAgent asr.ASRAgent,
 		conversationStore: conversationStore,
 		agentConfig:       agentConfig,
 		logger:            logger,
+		modelArg:          modelArg,
+		extractMemoryFlow: NewExtractMemoryFlow(llmModel, modelArg),
+		summaryFlow:       NewGenSummaryFlow(llmModel, modelArg),
 	}
 }
 
@@ -69,7 +77,7 @@ func (a *Agent) getTools(ctx context.Context) ([]ai.Tool, error) {
 			goto afterGoogleSearch
 		}
 		googleSearchTool := genkit.DefineTool(
-			a.g,
+			a.llmModel,
 			"googleSearch",
 			"Searches the web for a given query",
 			func(ctx *ai.ToolContext, input GoogleSearchInput) (any, error) {
@@ -102,7 +110,6 @@ const (
 )
 
 func (a *Agent) Compile(ctx context.Context) error {
-	a.g = genkit.Init(ctx, genkit.WithPlugins(a.llmModel), genkit.WithDefaultModel("googleai/gemini-2.5-flash"))
 	tools, err := a.getTools(ctx)
 	if err != nil {
 		return err
@@ -111,42 +118,44 @@ func (a *Agent) Compile(ctx context.Context) error {
 	for _, tool := range tools {
 		toolsRefs = append(toolsRefs, tool)
 	}
+
 	agentFlow := genkit.DefineStreamingFlow(
-		a.g,
+		a.llmModel,
 		"agentFlow",
 		func(ctx context.Context, input FlowInput, callback core.StreamCallback[string]) (string, error) {
-			a.conversationStore.CreateConversationIfNotExists(input.ConversationID, a.agentConfig.ShortTermMemoryConfig.MaxWindowSize, input.CharacterID, input.UserID)
+			err := a.conversationStore.CreateConversationIfNotExists(input.ConversationID, a.agentConfig.ShortTermMemoryConfig.MaxWindowSize, input.CharacterID, input.UserID)
+			if err != nil {
+				return "", err
+			}
 
 			messages, err := a.conversationStore.GetMessages(input.ConversationID)
 			if err != nil {
 				a.logger.Error("Lỗi khi lấy tin nhắn", "error", err)
 
 			}
-			historyMessages := make([]*ai.Message, len(messages))
-			for i, message := range messages {
-				var hm ai.Message
-				err := json.Unmarshal([]byte(message.Content), &hm)
-				if err != nil {
-					a.logger.Error("Lỗi khi unmarshal tin nhắn", "error", err)
-				} else {
-					historyMessages[i] = &hm
-				}
-			}
+			historyMessages := ParseHistoryMessages(messages)
 
 			ctx = context.WithValue(ctx, ConversationID, input.ConversationID)
 			ctx = context.WithValue(ctx, CharacterID, input.CharacterID)
 			ctx = context.WithValue(ctx, UserID, input.UserID)
 			finalResp, err := genkit.Generate(
 				ctx,
-				a.g,
-				ai.WithSystem(NewPrompt(a.characterStore, a.userStore, a.conversationStore, &input)),
+				a.llmModel,
+				ai.WithModel(a.modelArg),
+				ai.WithSystem(NewPrompt(input.UserFacts, input.CharacterFacts, input.User, input.Character)),
 				ai.WithMessages(historyMessages...),
 				ai.WithPrompt(input.Text),
 				ai.WithTools(toolsRefs...),
 				ai.WithStreaming(func(ctx context.Context, chunk *ai.ModelResponseChunk) error {
 					a.logger.Info("Chunk", "text", chunk.Text())
-					input.chunkChan <- chunk.Text()
-					return callback(ctx, chunk.Text())
+					trimmedText := strings.TrimSpace(chunk.Text())
+					if trimmedText != "" {
+						input.chunkChan <- chunk.Text()
+						return callback(ctx, chunk.Text())
+
+					}
+					return nil
+
 				}),
 				ai.WithMiddleware(a.SaveConversationMiddleware),
 			)
@@ -191,17 +200,34 @@ func (a *Agent) preProcessInput(ctx context.Context, input *FlowInput) (*FlowInp
 
 	return input, nil
 }
+func (a *Agent) RetrieveRelatedInfo(ctx context.Context, input *FlowInput) *FlowInput {
+	user, _ := a.userStore.GetUser(input.UserID)
+	userFacts, _ := a.userStore.GetUserFacts(input.UserID, 20)
+	characterFacts, _ := a.characterStore.GetCharacterFacts(input.CharacterID, 20)
+
+	character, _ := a.characterStore.GetCharacter(input.CharacterID)
+	input.User = user
+	input.UserFacts = userFacts
+	input.CharacterFacts = characterFacts
+	input.Character = character
+	return input
+}
 
 func (a *Agent) InferSpeak(ctx context.Context, input *FlowInput) (chan SpeakResponse, error) {
 	input, err := a.preProcessInput(ctx, input)
 	if err != nil {
 		return nil, err
 	}
+	input = a.RetrieveRelatedInfo(ctx, input)
+
 	input.chunkChan = make(chan string, 20)
 	resultChan := make(chan SpeakResponse, 20)
 
 	// Start flow in goroutine
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		input.Audio = []byte(input.Text)
 		chunks := a.flow.Stream(ctx, *input)
 
@@ -221,6 +247,37 @@ func (a *Agent) InferSpeak(ctx context.Context, input *FlowInput) (chan SpeakRes
 	// Process chunks and convert to speech
 	go a.handleStreamToSpeech(ctx, input.chunkChan, resultChan)
 
+	go func() {
+		wg.Wait()
+		bgCtx := context.Background()
+		historyMessages, _ := a.conversationStore.GetMessages(input.ConversationID)
+		if len(historyMessages)%20 == 0 {
+			summary, err := a.summaryFlow.Run(bgCtx, ExtractInput{
+				ChatHistory:    ParseHistoryMessages(historyMessages),
+				UserFacts:      input.UserFacts,
+				CharacterFacts: input.CharacterFacts,
+				User:           input.User,
+				Character:      input.Character})
+			if err != nil {
+				a.logger.Error("Lỗi khi tạo summary", "error", err)
+				return
+			}
+			a.logger.Info("Summary", "summary", summary)
+			// todo: update summary to database
+		}
+		facts, err := a.extractMemoryFlow.Run(bgCtx, ExtractInput{
+			ChatHistory:    ParseHistoryMessages(historyMessages),
+			UserFacts:      input.UserFacts,
+			CharacterFacts: input.CharacterFacts,
+			User:           input.User,
+			Character:      input.Character})
+		if err != nil {
+			a.logger.Error("Lỗi khi tạo facts", "error", err)
+			return
+		}
+		a.logger.Info("Facts", "facts", facts)
+		// todo: save facts to database
+	}()
 	return resultChan, nil
 }
 

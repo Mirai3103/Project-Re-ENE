@@ -7,13 +7,14 @@ import (
 	"github.com/Mirai3103/Project-Re-ENE/config/llm"
 )
 
-var supportedLLMProviders = []string{"gemini"}
+var supportedLLMProviders = []string{"gemini", "openai"}
 
 type LLMConfig struct {
 	Provider          string            `yaml:"provider"`
 	IsAudioSupported  bool              `yaml:"is_audio_supported"`
 	IsVisionSupported bool              `yaml:"is_vision_supported"`
 	GeminiConfig      *llm.GeminiConfig `yaml:"gemini_config"`
+	OpenAIConfig      *llm.OpenAIConfig `yaml:"openai_config"`
 	// todo: add other LLM configs
 }
 
@@ -24,6 +25,8 @@ func (c *LLMConfig) Validate() error {
 	switch c.Provider {
 	case "gemini":
 		return c.GeminiConfig.Validate()
+	case "openai":
+		return nil
 	default:
 		return errors.New("llm provider is not supported")
 	}

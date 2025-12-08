@@ -8,15 +8,18 @@ require (
 	github.com/firebase/genkit/go v1.2.0
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/google/uuid v1.6.0
+	github.com/google/wire v0.7.0
 	github.com/hajimehoshi/go-mp3 v0.3.4
 	github.com/imroc/req/v3 v3.56.0
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/lmittmann/tint v1.1.2
+	github.com/openai/openai-go v1.8.2
 	github.com/rubenv/sql-migrate v1.8.1
 	github.com/stretchr/testify v1.10.0
 	github.com/tursodatabase/turso-go v0.2.2
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.41
 	google.golang.org/api v0.236.0
+	google.golang.org/genai v1.36.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -81,6 +84,10 @@ require (
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
 	github.com/skeema/knownhosts v1.3.1 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
+	github.com/tidwall/gjson v1.18.0 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.1 // indirect
+	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/wailsapp/go-webview2 v1.0.22 // indirect
 	github.com/wailsapp/mimetype v1.4.1 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
@@ -100,7 +107,6 @@ require (
 	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
-	google.golang.org/genai v1.36.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250603155806-513f23925822 // indirect
 	google.golang.org/grpc v1.73.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect

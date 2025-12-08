@@ -31,4 +31,7 @@ tasks:
     summary: Runs the application in development mode
     cmds:
       - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
-
+  wire:
+    summary: Generates the wire.go file
+    cmds:
+      - wire generate ./wire.go
