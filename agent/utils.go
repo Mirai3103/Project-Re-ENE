@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Mirai3103/Project-Re-ENE/package/utils"
 	"github.com/Mirai3103/Project-Re-ENE/store"
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/core"
@@ -20,13 +21,12 @@ func (a *Agent) SaveConversationMiddleware(next core.StreamingFunc[*ai.ModelRequ
 		a.logger.Info("SaveConversationMiddleware", "conversationID", conversationID, "characterID", characterID, "userID", userID)
 		// Trước khi chạy
 		lastMessage := req.Messages[len(req.Messages)-1]
-		a.logger.Info("SaveToolMessage", "lastMessage", lastMessage)
 		jsonData, _ := json.Marshal(lastMessage)
-		err := a.conversationStore.AppendMessage(conversationID, &store.ConversationMessage{
-			ConversationID: conversationID,
-			Role:           string(lastMessage.Role),
-			Content:        string(jsonData),
-			CreatedAt:      time.Now(),
+		err := a.store.CreateConversationMessage(ctx, store.CreateConversationMessageParams{
+			ConversationID: utils.Ptr(conversationID),
+			Role:           utils.Ptr(string(lastMessage.Role)),
+			Content:        jsonData,
+			CreatedAt:      utils.Ptr(time.Now()),
 			ID:             uuid.New().String(),
 		})
 		if err != nil {
@@ -35,7 +35,9 @@ func (a *Agent) SaveConversationMiddleware(next core.StreamingFunc[*ai.ModelRequ
 		}
 
 		// Gọi hàm gốc
+		a.logger.Info("Calling next function")
 		resp, err := next(ctx, req, cb)
+		a.logger.Info("Next function called", "resp", resp)
 		if err != nil {
 			a.logger.Error("Lỗi khi gọi hàm gốc", "error", err)
 			return nil, err
@@ -49,11 +51,11 @@ func (a *Agent) SaveConversationMiddleware(next core.StreamingFunc[*ai.ModelRequ
 		NormalizeMessage(cpyMgs)
 		jsonData, _ = json.Marshal(cpyMgs)
 		a.logger.Info("SaveAssistantMessage")
-		err = a.conversationStore.AppendMessage(conversationID, &store.ConversationMessage{
-			ConversationID: conversationID,
-			Role:           "assistant",
-			Content:        string(jsonData),
-			CreatedAt:      time.Now(),
+		err = a.store.CreateConversationMessage(ctx, store.CreateConversationMessageParams{
+			ConversationID: utils.Ptr(conversationID),
+			Role:           utils.Ptr("assistant"),
+			Content:        jsonData,
+			CreatedAt:      utils.Ptr(time.Now()),
 			ID:             uuid.New().String(),
 		})
 		if err != nil {
@@ -133,7 +135,7 @@ func ConversationToText(conversation []*ai.Message) string {
 	contentBuilder := strings.Builder{}
 	for _, message := range conversation {
 		for _, part := range message.Content {
-			contentBuilder.WriteString(string(part.Text))
+			contentBuilder.WriteString(part.Text)
 		}
 		content := contentBuilder.String()
 		if content != "" {
@@ -148,37 +150,37 @@ func ConversationToText(conversation []*ai.Message) string {
 
 }
 
-func UserFactsToText(userFacts []*store.UserFact) string {
+func UserFactsToText(userFacts []store.UserFact) string {
 	ufBuilder := strings.Builder{}
 	for _, userFact := range userFacts {
-		ufBuilder.WriteString(userFact.Name)
+		ufBuilder.WriteString(*userFact.Name)
 		ufBuilder.WriteString(": ")
-		ufBuilder.WriteString(userFact.Value)
+		ufBuilder.WriteString(*userFact.Value)
 		ufBuilder.WriteString("\n")
 	}
 	return ufBuilder.String()
 }
 
-func CharacterFactsToText(characterFacts []*store.CharacterFact) string {
+func CharacterFactsToText(characterFacts []store.CharacterFact) string {
 	cfBuilder := strings.Builder{}
 	for _, characterFact := range characterFacts {
-		cfBuilder.WriteString(characterFact.Name)
+		cfBuilder.WriteString(*characterFact.Name)
 		cfBuilder.WriteString(": ")
-		cfBuilder.WriteString(characterFact.Value)
+		cfBuilder.WriteString(*characterFact.Value)
 		cfBuilder.WriteString("\n")
 	}
 	return cfBuilder.String()
 }
 
-func ParseHistoryMessages(messages []*store.ConversationMessage) []*ai.Message {
+func ParseHistoryMessages(messages []store.ConversationMessage) []*ai.Message {
 	historyMessages := make([]*ai.Message, len(messages))
 	for i, message := range messages {
 		var hm ai.Message
-		err := json.Unmarshal([]byte(message.Content), &hm)
+		err := json.Unmarshal(message.Content, &hm)
 		if err != nil {
 			continue
 		}
-		hm.Role = ai.Role(message.Role)
+		hm.Role = ai.Role(*message.Role)
 		historyMessages[i] = &hm
 	}
 	return historyMessages

@@ -27,8 +27,8 @@ type FlowInput struct {
 	ConversationID string
 	UserID         string
 	CharacterID    string
-	UserFacts      []*store.UserFact
-	CharacterFacts []*store.CharacterFact
+	UserFacts      []store.UserFact
+	CharacterFacts []store.CharacterFact
 	User           *store.User
 	Character      *store.Character
 }
@@ -37,30 +37,28 @@ type Agent struct {
 	llmModel          *genkit.Genkit
 	ttsAgent          tts.TTSAgent
 	asrAgent          asr.ASRAgent
-	characterStore    *store.CharacterStore
-	userStore         *store.UserStore
-	conversationStore *store.ConversationStore
+	store             *store.Queries
 	flow              *core.Flow[FlowInput, string, string]
 	agentConfig       *config.AgentConfig
 	logger            *slog.Logger
 	modelArg          ai.ModelArg
 	extractMemoryFlow *ExtractMemoryFlow
 	summaryFlow       *SummaryFlow
+	embeddingService  *EmbeddingService
 }
 
-func NewAgent(llmModel *genkit.Genkit, modelArg ai.ModelArg, ttsAgent tts.TTSAgent, asrAgent asr.ASRAgent, characterStore *store.CharacterStore, userStore *store.UserStore, conversationStore *store.ConversationStore, agentConfig *config.AgentConfig, logger *slog.Logger) *Agent {
+func NewAgent(llmModel *genkit.Genkit, modelArg ai.ModelArg, embeddingService *EmbeddingService, ttsAgent tts.TTSAgent, asrAgent asr.ASRAgent, store *store.Queries, agentConfig *config.AgentConfig, logger *slog.Logger) *Agent {
 	return &Agent{
 		llmModel:          llmModel,
 		ttsAgent:          ttsAgent,
 		asrAgent:          asrAgent,
-		characterStore:    characterStore,
-		userStore:         userStore,
-		conversationStore: conversationStore,
+		store:             store,
 		agentConfig:       agentConfig,
 		logger:            logger,
 		modelArg:          modelArg,
-		extractMemoryFlow: NewExtractMemoryFlow(llmModel, modelArg),
+		extractMemoryFlow: NewExtractMemoryFlow(llmModel, modelArg, embeddingService),
 		summaryFlow:       NewGenSummaryFlow(llmModel, modelArg),
+		embeddingService:  embeddingService,
 	}
 }
 
@@ -123,12 +121,22 @@ func (a *Agent) Compile(ctx context.Context) error {
 		a.llmModel,
 		"agentFlow",
 		func(ctx context.Context, input FlowInput, callback core.StreamCallback[string]) (string, error) {
-			err := a.conversationStore.CreateConversationIfNotExists(input.ConversationID, a.agentConfig.ShortTermMemoryConfig.MaxWindowSize, input.CharacterID, input.UserID)
+			cvs, err := a.store.CreateConversationIfNotExists(ctx, store.CreateConversationParams{
+				ID:          input.ConversationID,
+				UserID:      utils.Ptr(input.UserID),
+				CharacterID: utils.Ptr(input.CharacterID),
+			})
 			if err != nil {
 				return "", err
 			}
-
-			messages, err := a.conversationStore.GetMessages(input.ConversationID)
+			var windowSize = int64(a.agentConfig.ShortTermMemoryConfig.MaxWindowSize)
+			if cvs.MaxWindowSize != nil {
+				windowSize = *cvs.MaxWindowSize
+			}
+			messages, err := a.store.ListRecentMessages(ctx, store.ListRecentMessagesParams{
+				ConversationID: utils.Ptr(input.ConversationID),
+				Limit:          windowSize,
+			})
 			if err != nil {
 				a.logger.Error("Lỗi khi lấy tin nhắn", "error", err)
 
@@ -201,15 +209,21 @@ func (a *Agent) preProcessInput(ctx context.Context, input *FlowInput) (*FlowInp
 	return input, nil
 }
 func (a *Agent) RetrieveRelatedInfo(ctx context.Context, input *FlowInput) *FlowInput {
-	user, _ := a.userStore.GetUser(input.UserID)
-	userFacts, _ := a.userStore.GetUserFacts(input.UserID, 20)
-	characterFacts, _ := a.characterStore.GetCharacterFacts(input.CharacterID, 20)
+	user, _ := a.store.GetUser(ctx, input.UserID)
+	userFacts, _ := a.store.GetUserFacts(ctx, store.GetUserFactsParams{
+		Limit:  10,
+		UserID: utils.Ptr(input.UserID),
+	})
+	characterFacts, _ := a.store.GetCharacterFacts(ctx, store.GetCharacterFactsParams{
+		Limit:       10,
+		CharacterID: utils.Ptr(input.CharacterID),
+	})
 
-	character, _ := a.characterStore.GetCharacter(input.CharacterID)
-	input.User = user
+	character, _ := a.store.GetCharacter(ctx, input.CharacterID)
+	input.User = &user
 	input.UserFacts = userFacts
 	input.CharacterFacts = characterFacts
-	input.Character = character
+	input.Character = &character
 	return input
 }
 
@@ -250,8 +264,8 @@ func (a *Agent) InferSpeak(ctx context.Context, input *FlowInput) (chan SpeakRes
 	go func() {
 		wg.Wait()
 		bgCtx := context.Background()
-		historyMessages, _ := a.conversationStore.GetMessages(input.ConversationID)
-		if len(historyMessages)%20 == 0 {
+		historyMessages, _ := a.store.ListConversationMessages(ctx, utils.Ptr(input.ConversationID))
+		if len(historyMessages)%20 == 0 && len(historyMessages) > 0 {
 			summary, err := a.summaryFlow.Run(bgCtx, ExtractInput{
 				ChatHistory:    ParseHistoryMessages(historyMessages),
 				UserFacts:      input.UserFacts,
@@ -265,17 +279,19 @@ func (a *Agent) InferSpeak(ctx context.Context, input *FlowInput) (chan SpeakRes
 			a.logger.Info("Summary", "summary", summary)
 			// todo: update summary to database
 		}
-		facts, err := a.extractMemoryFlow.Run(bgCtx, ExtractInput{
-			ChatHistory:    ParseHistoryMessages(historyMessages),
-			UserFacts:      input.UserFacts,
-			CharacterFacts: input.CharacterFacts,
-			User:           input.User,
-			Character:      input.Character})
-		if err != nil {
-			a.logger.Error("Lỗi khi tạo facts", "error", err)
-			return
+		if len(historyMessages) > 0 {
+			facts, err := a.extractMemoryFlow.Run(bgCtx, ExtractInput{
+				ChatHistory:    ParseHistoryMessages(historyMessages),
+				UserFacts:      input.UserFacts,
+				CharacterFacts: input.CharacterFacts,
+				User:           input.User,
+				Character:      input.Character})
+			if err != nil {
+				a.logger.Error("Lỗi khi tạo facts", "error", err)
+				return
+			}
+			a.logger.Info("Facts", "facts", facts)
 		}
-		a.logger.Info("Facts", "facts", facts)
 		// todo: save facts to database
 	}()
 	return resultChan, nil

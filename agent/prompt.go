@@ -8,7 +8,7 @@ import (
 	"github.com/firebase/genkit/go/ai"
 )
 
-func NewPrompt(userFacts []*store.UserFact, characterFacts []*store.CharacterFact, user *store.User, character *store.Character) string {
+func NewPrompt(userFacts []store.UserFact, characterFacts []store.CharacterFact, user *store.User, character *store.Character) string {
 	var promptTemplate = `
 		{{ .character_base_prompt }}
 		Đây là những thông tin cá nhân của bạn:
@@ -107,7 +107,7 @@ Hãy phân tích và trích xuất thông tin từ đoạn hội thoại trên.
 </user>
 `
 
-func NewExtractPrompt(userFacts []*store.UserFact, characterFacts []*store.CharacterFact, user *store.User, character *store.Character, conversationHistory []*ai.Message) string {
+func NewExtractPrompt(userFacts []store.UserFact, characterFacts []store.CharacterFact, user *store.User, character *store.Character, conversationHistory []*ai.Message) string {
 	t := template.Must(template.New("extract_prompt").Parse(templateExtractPrompt))
 
 	conversationHistoryText := ConversationToText(conversationHistory)

@@ -4,15 +4,16 @@ import (
 	"context"
 
 	"github.com/Mirai3103/Project-Re-ENE/config/embedding"
+	"github.com/Mirai3103/Project-Re-ENE/package/utils"
 	"google.golang.org/genai"
 )
 
 type googleGeminiModel struct {
-	cfg    *embedding.GoogleGeminiConfig
+	cfg    *embedding.GoogleEmbeddingConfig
 	client *genai.Client
 }
 
-func NewGoogleGeminiModel(ctx context.Context, cfg *embedding.GoogleGeminiConfig) (Model, error) {
+func newGoogleGeminiModel(ctx context.Context, cfg *embedding.GoogleEmbeddingConfig) (Model, error) {
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey: cfg.APIKey,
 	})
@@ -29,7 +30,9 @@ func (m *googleGeminiModel) Get(ctx context.Context, text string) ([]float32, er
 	result, err := m.client.Models.EmbedContent(ctx,
 		m.cfg.ModelID,
 		contents,
-		nil,
+		&genai.EmbedContentConfig{
+			OutputDimensionality: utils.Ptr(int32(1536)),
+		},
 	)
 	if err != nil {
 		return nil, err
@@ -45,7 +48,9 @@ func (m *googleGeminiModel) Gets(ctx context.Context, texts []string) ([][]float
 	result, err := m.client.Models.EmbedContent(ctx,
 		m.cfg.ModelID,
 		contents,
-		nil,
+		&genai.EmbedContentConfig{
+			OutputDimensionality: utils.Ptr(int32(1536)),
+		},
 	)
 	if err != nil {
 		return nil, err

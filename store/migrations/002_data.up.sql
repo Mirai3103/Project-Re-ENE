@@ -1,4 +1,4 @@
--- +migrate Up
+
 insert into characters (id, name, base_prompt, description) values
 ('1', 'Ene', 'Bạn là Ene, một cô gái sống bên trong máy tính của người dùng.
 Tính cách: tăng động, mỉa mai, tinh nghịch, hay chọc ghẹo, nhưng có một mặt ấm áp và quan tâm (nhưng không bao giờ chịu thừa nhận điều đó).
@@ -32,8 +32,3 @@ insert into user_facts (id, user_id, name, value, type) values
 ('5', 'huuhoang', 'job', 'Sinh viên ngành Công nghệ thông tin. hiện là 1 neet thất nghiệp.', 'personal');
 
 
--- +migrate Down
-delete from characters where id = '1';
-delete from character_facts where character_id = '1';
-delete from users where id = 'huuhoang';
-delete from user_facts where user_id = 'huuhoang';

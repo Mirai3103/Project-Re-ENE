@@ -1,4 +1,24 @@
--- +migrate Up
+
+CREATE TABLE IF NOT EXISTS conversations (
+    id TEXT PRIMARY KEY,
+    title TEXT ,
+    max_window_size INTEGER ,
+    character_id TEXT ,
+    user_id TEXT ,
+    current_summary TEXT ,
+    created_at TIMESTAMP  DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP  DEFAULT CURRENT_TIMESTAMP
+);
+
+
+CREATE TABLE IF NOT EXISTS conversation_messages (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT ,
+    role TEXT ,
+    content blob ,
+    created_at TIMESTAMP  DEFAULT CURRENT_TIMESTAMP
+);
+
 
 create table if not exists characters (
     id text primary key,
@@ -43,7 +63,7 @@ create table if not exists memories (
     user_id text ,
     character_id text ,
     content text ,
-    embedding F32_BLOB(1024) ,
+    embedding blob ,
     importance REAL  default 0.0,
     confidence REAL  default 0.0,
     source text ,
@@ -54,12 +74,3 @@ create table if not exists memories (
     created_at timestamp  default current_timestamp,
     updated_at timestamp  default current_timestamp
 );
-
-
-
--- +migrate Down
-drop table if exists characters;
-drop table if exists character_facts;
-drop table if exists users;
-drop table if exists user_facts;
-drop table if exists memories;

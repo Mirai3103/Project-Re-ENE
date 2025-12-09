@@ -4,12 +4,14 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"log/slog"
 	"os"
 
 	"github.com/Mirai3103/Project-Re-ENE/agent"
 	"github.com/Mirai3103/Project-Re-ENE/asr"
 	"github.com/Mirai3103/Project-Re-ENE/config"
+	"github.com/Mirai3103/Project-Re-ENE/embedding"
 	"github.com/Mirai3103/Project-Re-ENE/llm"
 	"github.com/Mirai3103/Project-Re-ENE/package/audio"
 	"github.com/Mirai3103/Project-Re-ENE/services"
@@ -55,26 +57,26 @@ func ProvideAgentConfig(cfg *config.Config) *config.AgentConfig {
 
 // Application holds all initialized services
 type Application struct {
-	AppService      *services.AppService
-	ModelService    *services.ModelService
-	RecorderService *services.RecorderService
-	ConfigService   *services.ConfigService
-	ChatService     *services.ChatService
-	Agent           *agent.Agent
+	AppService       *services.AppService
+	ModelService     *services.ModelService
+	RecorderService  *services.RecorderService
+	ConfigService    *services.ConfigService
+	ChatService      *services.ChatService
+	Agent            *agent.Agent
+	EmbeddingService *agent.EmbeddingService
 }
 
 // InitializeApplication wires up all dependencies
 func InitializeApplication(ctx context.Context, cfg *config.Config) (*Application, error) {
 	wire.Build(
 		// Infrastructure
+		store.NewSQLiteDB,
 		ProvideLogger,
-		store.NewDB,
-		store.New,
 		ProvideAudioRecorder,
 
 		// Store components
-		wire.FieldsOf(new(*store.Store), "ConversationStore", "CharacterStore", "UserStore"),
-
+		wire.Bind(new(store.DBTX), new(*sql.DB)),
+		store.New,
 		// Config
 		ProvideAgentConfig,
 
@@ -91,7 +93,8 @@ func InitializeApplication(ctx context.Context, cfg *config.Config) (*Applicatio
 		services.NewRecorderService,
 		services.NewConfigService,
 		services.NewChatService,
-
+		agent.NewEmbeddingService,
+		embedding.New,
 		// Application
 		wire.Struct(new(Application), "*"),
 	)

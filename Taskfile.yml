@@ -34,4 +34,8 @@ tasks:
   wire:
     summary: Generates the wire.go file
     cmds:
-      - wire generate ./wire.go
+      - wire
+  sqlc:
+    summary: Generates the sqlc.go file
+    cmds:
+      - sqlc generate

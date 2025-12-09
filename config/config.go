@@ -8,6 +8,7 @@ type Config struct {
 	CharacterConfig CharacterConfig `yaml:"character_config"`
 	AgentConfig     AgentConfig     `yaml:"agent_config"`
 	ModelsConfig    ModelsConfig    `yaml:"models_config"`
+	EmbeddingConfig EmbeddingConfig `yaml:"embedding_config"`
 }
 
 func (c *Config) Validate() error {

@@ -43,13 +43,13 @@ func main() {
 
 	// Initialize all dependencies using Wire
 	ctx := context.Background()
-	app_deps, err := InitializeApplication(ctx, cfg)
+	appDeps, err := InitializeApplication(ctx, cfg)
 	if err != nil {
 		panic(err)
 	}
 
 	// Compile the agent
-	err = app_deps.Agent.Compile(ctx)
+	err = appDeps.Agent.Compile(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -64,13 +64,13 @@ func main() {
 		Description: "A demo of using raw HTML & CSS",
 
 		Services: []application.Service{
-			application.NewServiceWithOptions(app_deps.ModelService, application.ServiceOptions{
+			application.NewServiceWithOptions(appDeps.ModelService, application.ServiceOptions{
 				Route: "/models",
 			}),
-			application.NewService(app_deps.AppService),
-			application.NewService(app_deps.RecorderService),
-			application.NewService(app_deps.ConfigService),
-			application.NewService(app_deps.ChatService),
+			application.NewService(appDeps.AppService),
+			application.NewService(appDeps.RecorderService),
+			application.NewService(appDeps.ConfigService),
+			application.NewService(appDeps.ChatService),
 		},
 
 		Assets: application.AssetOptions{

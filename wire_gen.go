@@ -11,6 +11,7 @@ import (
 	"github.com/Mirai3103/Project-Re-ENE/agent"
 	"github.com/Mirai3103/Project-Re-ENE/asr"
 	"github.com/Mirai3103/Project-Re-ENE/config"
+	"github.com/Mirai3103/Project-Re-ENE/embedding"
 	"github.com/Mirai3103/Project-Re-ENE/llm"
 	"github.com/Mirai3103/Project-Re-ENE/package/audio"
 	"github.com/Mirai3103/Project-Re-ENE/services"
@@ -44,6 +45,16 @@ func InitializeApplication(ctx context.Context, cfg *config.Config) (*Applicatio
 	if err != nil {
 		return nil, err
 	}
+	model, err := embedding.New(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	db, err := store.NewSQLiteDB()
+	if err != nil {
+		return nil, err
+	}
+	queries := store.New(db)
+	embeddingService := agent.NewEmbeddingService(cfg, logger, model, queries)
 	ttsAgent, err := tts.New(cfg, logger)
 	if err != nil {
 		return nil, err
@@ -52,28 +63,21 @@ func InitializeApplication(ctx context.Context, cfg *config.Config) (*Applicatio
 	if err != nil {
 		return nil, err
 	}
-	db, err := store.NewDB()
-	if err != nil {
-		return nil, err
-	}
-	storeStore := store.New(db)
-	characterStore := storeStore.CharacterStore
-	userStore := storeStore.UserStore
-	conversationStore := storeStore.ConversationStore
 	agentConfig := ProvideAgentConfig(cfg)
-	agentAgent := agent.NewAgent(genkit, modelArg, ttsAgent, asrAgent, characterStore, userStore, conversationStore, agentConfig, logger)
+	agentAgent := agent.NewAgent(genkit, modelArg, embeddingService, ttsAgent, asrAgent, queries, agentConfig, logger)
 	appService := services.NewAppService(cfg, logger, recorder, agentAgent)
 	modelService := services.NewModelService(cfg, logger)
 	recorderService := services.NewRecorderService(cfg, recorder)
 	configService := services.NewConfigService(cfg, logger)
-	chatService := services.NewChatService(cfg, logger, conversationStore)
+	chatService := services.NewChatService(cfg, logger, queries)
 	application := &Application{
-		AppService:      appService,
-		ModelService:    modelService,
-		RecorderService: recorderService,
-		ConfigService:   configService,
-		ChatService:     chatService,
-		Agent:           agentAgent,
+		AppService:       appService,
+		ModelService:     modelService,
+		RecorderService:  recorderService,
+		ConfigService:    configService,
+		ChatService:      chatService,
+		Agent:            agentAgent,
+		EmbeddingService: embeddingService,
 	}
 	return application, nil
 }
@@ -114,10 +118,11 @@ func ProvideAgentConfig(cfg *config.Config) *config.AgentConfig {
 
 // Application holds all initialized services
 type Application struct {
-	AppService      *services.AppService
-	ModelService    *services.ModelService
-	RecorderService *services.RecorderService
-	ConfigService   *services.ConfigService
-	ChatService     *services.ChatService
-	Agent           *agent.Agent
+	AppService       *services.AppService
+	ModelService     *services.ModelService
+	RecorderService  *services.RecorderService
+	ConfigService    *services.ConfigService
+	ChatService      *services.ChatService
+	Agent            *agent.Agent
+	EmbeddingService *agent.EmbeddingService
 }

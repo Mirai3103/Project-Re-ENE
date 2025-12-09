@@ -2,7 +2,9 @@ package agent
 
 import (
 	"context"
+	"strings"
 
+	"github.com/Mirai3103/Project-Re-ENE/package/utils"
 	"github.com/Mirai3103/Project-Re-ENE/store"
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/core"
@@ -28,14 +30,14 @@ type ExtractOutput struct {
 
 type ExtractInput struct {
 	ChatHistory    []*ai.Message
-	UserFacts      []*store.UserFact
-	CharacterFacts []*store.CharacterFact
+	UserFacts      []store.UserFact
+	CharacterFacts []store.CharacterFact
 	User           *store.User
 	Character      *store.Character
 }
 type ExtractMemoryFlow = core.Flow[ExtractInput, ExtractOutput, struct{}]
 
-func NewExtractMemoryFlow(g *genkit.Genkit, m ai.ModelArg) *core.Flow[ExtractInput, ExtractOutput, struct{}] {
+func NewExtractMemoryFlow(g *genkit.Genkit, m ai.ModelArg, embeddingService *EmbeddingService) *core.Flow[ExtractInput, ExtractOutput, struct{}] {
 	return genkit.DefineFlow(
 		g,
 		"extractMemoryFlow",
@@ -53,6 +55,15 @@ func NewExtractMemoryFlow(g *genkit.Genkit, m ai.ModelArg) *core.Flow[ExtractInp
 			var extractOutput ExtractOutput
 			if err := resp.Output(&extractOutput); err != nil {
 				return ExtractOutput{}, err
+			}
+			for _, fact := range extractOutput.Memories {
+				_ = embeddingService.AddMemory(ctx, &store.Memory{
+					Content:    utils.Ptr(fact.Content),
+					Importance: utils.Ptr(fact.Importance),
+					Confidence: utils.Ptr(fact.Confidence),
+					Tags:       utils.Ptr(strings.Join(fact.Tags, ",")),
+				})
+
 			}
 			return extractOutput, nil
 		},

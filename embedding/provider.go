@@ -13,11 +13,10 @@ type Model interface {
 }
 
 func New(ctx context.Context, cfg *config.Config) (Model, error) {
-	// switch cfg.EmbeddingConfig.Provider {
-	// case "google":
-	// 	return newGoogleGeminiModel(ctx, cfg.EmbeddingConfig.GoogleGeminiConfig)
-	// default:
-	// 	return nil, fmt.Errorf("embedding provider not found")
-	// }
-	return nil, fmt.Errorf("embedding provider not found")
+	switch cfg.EmbeddingConfig.Provider {
+	case "google":
+		return newGoogleGeminiModel(ctx, cfg.EmbeddingConfig.Google)
+	default:
+		return nil, fmt.Errorf("embedding provider not found")
+	}
 }

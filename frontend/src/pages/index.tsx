@@ -31,7 +31,11 @@ type MessageContent = {
     text: string;
    }[];
 }
-
+function base64ToUtf8(base64: string) {
+  const binary = atob(base64);
+  const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+  return new TextDecoder("utf-8").decode(bytes);
+}
 export default function HomePage() {
   const modelRef = useRef<Live2DModel<InternalModel> | null>(null);
   const [speakingText, setSpeakingText] = useState<string>("");
@@ -46,14 +50,15 @@ export default function HomePage() {
   })
   React.useEffect(() => {
     if(chatHistory){
+        console.log(chatHistory);
        const newMessages = chatHistory.map((item)=>{
-        const content = JSON.parse(item!.content) as MessageContent;
+        const content = JSON.parse(base64ToUtf8(item!.Content)) as MessageContent;
         console.log(content);
         return {
           id: crypto.randomUUID(),
-          role: item!.role,
-          text: content.content.map(item => item.text).join(""),
-          timestamp: new Date(item!.created_at),
+          role: item!.Role,
+          text: content.content.map(item => item.text).join(" "),
+          timestamp: new Date(item!.CreatedAt),
         }
        });
        setMessages(newMessages as any);
