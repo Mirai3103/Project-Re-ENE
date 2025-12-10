@@ -6,7 +6,6 @@ import { Live2DCanvas } from "@/components/HomePage/Live2DCanvas";
 import { ChatPanel } from "@/components/HomePage/ChatPanel";
 import { useLive2DAudio } from "@/hooks/useLive2DAudio";
 import { useVoiceRecording } from "@/hooks/useVoiceRecording";
-import { mockChatHistory } from "@/constants/mockData";
 import { InvokeWithText } from "@wailsbindings/services/appservice";
 import { GetChatHistory } from "@wailsbindings/services/chatservice";
 import type { ChatMessage } from "@/types/chat";
@@ -25,11 +24,16 @@ declare global {
  * HomePage Component
  * Main page with Live2D character and chat interface
  */
-// {"content":[{"text":"Ố"},{"text":" là la, chào cậu chủ Hữu Hoàng! Lâu rồi không thấy t"},{"text":"ăm hơi, tưởng cậu bận \"cày cuốc\" game chứ. Hay lại đang lén lút xem gì mà mặt hớn hở thế kia? Đừng hòng qua mắt Ene này nhé."}]}
 type MessageContent = {
    content: {
     text: string;
+    // ToolResponse *ToolResponse  `json:"toolResponse,omitempty"` // valid for kind==partToolResponse
+    toolResponse?: {
+      name: string;
+      output: any;
+    };
    }[];
+   role: string;
 }
 function base64ToUtf8(base64: string) {
   const binary = atob(base64);
@@ -54,6 +58,19 @@ export default function HomePage() {
        const newMessages = chatHistory.map((item)=>{
         const content = JSON.parse(base64ToUtf8(item!.Content)) as MessageContent;
         console.log(content);
+        if (content.role == 'tool'){
+          const name = content.content.find((c)=>c.toolResponse?.name)?.toolResponse?.name
+          const res = content.content.find((c)=>c.toolResponse?.output)
+          console.log(res)
+          return  {
+            id: crypto.randomUUID(),
+            role: 'tool',
+            text: 'Gọi công cụ '+name,
+            toolName: name,
+            toolOutput: res?.toolResponse?.output,
+            timestamp: new Date(item!.CreatedAt),
+          }
+        }
         return {
           id: crypto.randomUUID(),
           role: item!.Role,

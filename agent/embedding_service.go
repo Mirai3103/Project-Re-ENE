@@ -39,5 +39,15 @@ func (s *EmbeddingService) AddMemory(ctx context.Context, memory *store.Memory) 
 		return fmt.Errorf("memory already exists")
 	}
 	memory.Embedding = store.Float32ToBytes(vector)
-	return s.AddMemory(ctx, memory)
+	return s.store.CreateMemory(ctx, store.CreateMemoryParams{
+		ID:          memory.ID,
+		Content:     memory.Content,
+		Importance:  memory.Importance,
+		Confidence:  memory.Confidence,
+		Tags:        memory.Tags,
+		Embedding:   memory.Embedding,
+		UserID:      memory.UserID,
+		Source:      memory.Source,
+		CharacterID: memory.CharacterID,
+	})
 }

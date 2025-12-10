@@ -19,7 +19,7 @@ export function ChatPanel({
   streamingMessage,
 }: ChatPanelProps) {
   return (
-    <div className="hidden xl:flex flex-col w-96 rounded-2xl  bg-transparent py-10 h-full px-2 min-h-screen  ">
+    <div className="hidden xl:flex flex-col w-96 rounded-2xl  bg-transparent py-10 h-full px-2 h-screen  ">
       {/* Chat Header */}
       <div className="border-l border-border/50 flex-1 flex flex-col bg-card/30 backdrop-blur-md h-full rounded-2xl">
       <div className="p-4 border-b border-border/50 bg-card/50 backdrop-blur-sm rounded-2xl">

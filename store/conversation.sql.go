@@ -131,7 +131,7 @@ const listRecentMessages = `-- name: ListRecentMessages :many
 SELECT id, conversation_id, role, content, created_at
 FROM conversation_messages
 WHERE conversation_id = ?
-ORDER BY created_at DESC
+ORDER BY created_at ASC
 LIMIT ?
 `
 

@@ -15,7 +15,8 @@ VALUES (?, ?, ?, ?, ?);
 -- name: ListConversationMessages :many
 SELECT *
 FROM conversation_messages
-WHERE conversation_id = ?;
+WHERE conversation_id = ?
+ORDER BY created_at ASC;
 
 -- name: GetConversationWindowSize :one
 SELECT max_window_size
@@ -26,5 +27,5 @@ WHERE id = ?;
 SELECT *
 FROM conversation_messages
 WHERE conversation_id = ?
-ORDER BY created_at DESC
+ORDER BY created_at ASC
 LIMIT ?;

@@ -1,8 +1,10 @@
 export interface ChatMessage {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | 'tool';
   text: string;
   timestamp: Date;
+  toolName?: string;
+  toolOutput?: any;
 }
 
 export interface Live2DModelRef {

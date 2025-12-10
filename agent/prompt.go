@@ -3,6 +3,7 @@ package agent
 import (
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/Mirai3103/Project-Re-ENE/store"
 	"github.com/firebase/genkit/go/ai"
@@ -21,15 +22,16 @@ func NewPrompt(userFacts []store.UserFact, characterFacts []store.CharacterFact,
 		{{ range .user_facts }}
 		{{ .Name }}: {{ .Value }}
 		{{ end }}
-		 Chỉ trả lời ngắn gọn, tối đa 3 câu.
+		Chỉ trả lời ngắn gọn, từ 1 đến 3 câu trừ khi cần thiết. Thời gian bây giờ là {{ .now }}
 `
 	t := template.Must(template.New("system_prompt").Parse(promptTemplate))
 	var values = map[string]any{
 		"character_base_prompt": character.BasePrompt,
-		"character_facts":       CharacterFactsToText(characterFacts),
-		"user_facts":            UserFactsToText(userFacts),
+		"character_facts":       characterFacts,
+		"user_facts":            userFacts,
 		"name":                  user.Name,
 		"bio":                   user.Bio,
+		"now":                   time.Now().Format("2006-01-02 15:04:05"),
 	}
 	var prompt strings.Builder
 	t.Execute(&prompt, values)
