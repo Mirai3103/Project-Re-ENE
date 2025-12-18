@@ -10,6 +10,7 @@ import (
 
 	"github.com/Mirai3103/Project-Re-ENE/asr"
 	"github.com/Mirai3103/Project-Re-ENE/config"
+	localTools "github.com/Mirai3103/Project-Re-ENE/package/tools"
 	"github.com/Mirai3103/Project-Re-ENE/package/utils"
 	"github.com/Mirai3103/Project-Re-ENE/store"
 	"github.com/Mirai3103/Project-Re-ENE/tts"
@@ -88,7 +89,73 @@ func (a *Agent) getTools(ctx context.Context) ([]ai.Tool, error) {
 		)
 		tools = append(tools, googleSearchTool)
 	}
+
 afterGoogleSearch:
+
+	if a.agentConfig.ToolsConfig.BrowserHistory.Enable {
+		browserHistoryTool, err := localTools.NewBrowserHistoryTool(a.agentConfig.ToolsConfig.BrowserHistory.ChromeProfilePath)
+		if err != nil {
+			goto afterBrowserHistory
+		}
+		browserHistoryToolRef := genkit.DefineTool(
+			a.llmModel,
+			"browserHistory",
+			"Gets the browser history",
+			func(ctx *ai.ToolContext, input localTools.GetRecentInput) (string, error) {
+				browserHistory, err := browserHistoryTool.GetRecent(ctx, input)
+				if err != nil {
+					return "", err
+				}
+				// build csv from browserHistory
+				csv := strings.Builder{}
+				csv.WriteString("URL,Title\n")
+				for _, history := range browserHistory {
+					csv.WriteString(history.URL + "," + history.Title + "\n")
+				}
+				return csv.String(), nil
+			},
+		)
+		tools = append(tools, browserHistoryToolRef)
+		// browserHistoryToolRef = genkit.DefineTool(
+		// 	a.llmModel,
+		// 	"browserHistoryByDomain",
+		// 	"Gets the browser history by domain",
+		// 	func(ctx *ai.ToolContext, input localTools.GetByDomainInput) (string, error) {
+		// 		browserHistory, err := browserHistoryTool.GetByDomain(ctx, input)
+		// 		if err != nil {
+		// 			return "", err
+		// 		}
+		// 		// build csv from browserHistory
+		// 		csv := strings.Builder{}
+		// 		csv.WriteString("URL,Title\n")
+		// 		for _, history := range browserHistory {
+		// 			csv.WriteString(history.URL + "," + history.Title + "\n")
+		// 		}
+		// 		return csv.String(), nil
+		// 	},
+		// )
+		// tools = append(tools, browserHistoryToolRef)
+		browserHistoryToolRef = genkit.DefineTool(
+			a.llmModel,
+			"browserHistoryByKeyword",
+			"Gets the browser history by keyword",
+			func(ctx *ai.ToolContext, input localTools.GetByKeywordInput) (string, error) {
+				browserHistory, err := browserHistoryTool.GetByKeyword(ctx, input)
+				if err != nil {
+					return "", err
+				}
+				// build csv from browserHistory
+				csv := strings.Builder{}
+				csv.WriteString("URL,Title\n")
+				for _, history := range browserHistory {
+					csv.WriteString(history.URL + "," + history.Title + "\n")
+				}
+				return csv.String(), nil
+			},
+		)
+		tools = append(tools, browserHistoryToolRef)
+	}
+afterBrowserHistory:
 	mcpTools, err := a.parseMcpTools(ctx)
 	if err == nil {
 		tools = append(tools, mcpTools...)

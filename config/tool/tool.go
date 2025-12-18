@@ -1,8 +1,9 @@
 package tools
 
 type ToolConfig struct {
-	GoogleSearch GoogleSearchToolConfig `yaml:"google_search"`
-	MCP          MCPToolConfig          `yaml:"mcp"`
+	GoogleSearch   GoogleSearchToolConfig   `yaml:"google_search"`
+	MCP            MCPToolConfig            `yaml:"mcp"`
+	BrowserHistory BrowserHistoryToolConfig `yaml:"browser_history"`
 }
 
 type GoogleSearchToolConfig struct {
@@ -12,6 +13,11 @@ type GoogleSearchToolConfig struct {
 	Num            int    `yaml:"num"`
 	Lang           string `yaml:"lang"`
 	Enable         bool   `yaml:"enable"`
+}
+
+type BrowserHistoryToolConfig struct {
+	Enable            bool   `yaml:"enable"`
+	ChromeProfilePath string `yaml:"chrome_profile_path"`
 }
 
 type MCPToolConfig struct {

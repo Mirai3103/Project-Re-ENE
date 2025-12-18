@@ -8,6 +8,7 @@ import (
 	"github.com/Mirai3103/Project-Re-ENE/config"
 	"github.com/Mirai3103/Project-Re-ENE/embedding"
 	"github.com/Mirai3103/Project-Re-ENE/store"
+	"github.com/google/uuid"
 )
 
 type EmbeddingService struct {
@@ -49,5 +50,25 @@ func (s *EmbeddingService) AddMemory(ctx context.Context, memory *store.Memory) 
 		UserID:      memory.UserID,
 		Source:      memory.Source,
 		CharacterID: memory.CharacterID,
+	})
+}
+
+func (s *EmbeddingService) AddUserFact(ctx context.Context, fact *store.UserFact) error {
+	return s.store.AddUserFact(ctx, store.AddUserFactParams{
+		ID:     uuid.New().String(),
+		UserID: fact.UserID,
+		Name:   fact.Name,
+		Value:  fact.Value,
+		Type:   fact.Type,
+	})
+}
+
+func (s *EmbeddingService) AddCharacterFact(ctx context.Context, fact *store.CharacterFact) error {
+	return s.store.AddCharacterFact(ctx, store.AddCharacterFactParams{
+		ID:          uuid.New().String(),
+		CharacterID: fact.CharacterID,
+		Name:        fact.Name,
+		Value:       fact.Value,
+		Type:        fact.Type,
 	})
 }
